@@ -10,6 +10,7 @@ npm i -g vercel@latest
 # Deploy to Vercel
 echo "🚀 Deploying to Vercel..."
 vercel deploy \
+  --yes \
   --token $NOW_TOKEN \
   --scope $TEAM \
   --meta gitCommitSha=$GITHUB_SHA \
@@ -19,6 +20,7 @@ vercel deploy \
 # Alias production deployment
 echo "🌐 Setting up production alias..."
 vercel alias \
+  --yes \
   --token $NOW_TOKEN \
   --scope $TEAM \
   $ALIAS
