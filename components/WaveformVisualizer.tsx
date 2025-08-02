@@ -19,8 +19,8 @@ interface WaveformVisualizerProps {
 export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpdate, gain, onGainChange, onGainApply, isProcessing, onDownload, onNewFile }: WaveformVisualizerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const wavesurferRef = useRef<WaveSurfer | null>(null);
-  const regionsPluginRef = useRef<any>(null);
-  const regionRef = useRef<any>(null);
+  const regionsPluginRef = useRef<RegionsPlugin | null>(null);
+  const regionRef = useRef<ReturnType<RegionsPlugin['addRegion']> | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
@@ -126,14 +126,13 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
     if (wavesurferRef.current && regionRef.current) {
       const duration = wavesurferRef.current.getDuration();
       const startPosition = regionRef.current.start / duration;
-      const endPosition = regionRef.current.end / duration;
       
       wavesurferRef.current.seekTo(startPosition);
       wavesurferRef.current.play();
       
       // Stop playback when reaching the end of selection
       const stopPlayback = () => {
-        if (wavesurferRef.current) {
+        if (wavesurferRef.current && regionRef.current) {
           const currentTime = wavesurferRef.current.getCurrentTime();
           if (currentTime >= regionRef.current.end) {
             wavesurferRef.current.pause();
@@ -175,7 +174,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       setHasRegion(true);
 
       regionRef.current.on('update', () => {
-        if (onRegionUpdate) {
+        if (onRegionUpdate && regionRef.current) {
           onRegionUpdate(regionRef.current.start, regionRef.current.end);
         }
       });

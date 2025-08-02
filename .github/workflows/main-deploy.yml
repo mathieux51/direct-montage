@@ -1,0 +1,24 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    env:
+      NOW_ORG_ID: ${{ secrets.NOW_ORG_ID }}
+      NOW_PROJECT_ID: ${{ secrets.NOW_PROJECT_ID_MONTAGE }}
+      NOW_TOKEN: ${{ secrets.NOW_TOKEN }}
+      ALIAS: "montage.directpodcast.fr"
+      PROJECT_NAME: "direct-montage"
+      TEAM: ${{ secrets.TEAM }}
+
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install Dependencies
+        run: npm ci
+      - name: Deploy
+        run: ./scripts/deploy.sh

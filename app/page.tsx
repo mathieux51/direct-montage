@@ -1,12 +1,12 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import AudioUpload from '@/components/AudioUpload';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
 import { cropAudio, adjustGain } from '@/lib/audioProcessor';
 
-export default function Home() {
+function HomeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [audioFile, setAudioFile] = useState<File | null>(null);
@@ -75,27 +75,6 @@ export default function Home() {
     });
   };
 
-  const saveToIndexedDB = async (file: File) => {
-    const db = await openDB();
-    const arrayBuffer = await file.arrayBuffer();
-    
-    const transaction = db.transaction(['audioFiles'], 'readwrite');
-    const store = transaction.objectStore('audioFiles');
-    
-    const audioData = {
-      name: file.name,
-      type: file.type,
-      data: arrayBuffer,
-      fileName: fileName || file.name
-    };
-    
-    const request = store.put(audioData, 'currentAudio');
-    
-    return new Promise<void>((resolve, reject) => {
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  };
 
   const clearIndexedDB = async () => {
     const db = await openDB();
@@ -243,5 +222,13 @@ export default function Home() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense fallback={<div className="min-h-screen py-8"><div className="max-w-6xl mx-auto px-4"><div className="animate-pulse text-white">Loading...</div></div></div>}>
+      <HomeContent />
+    </Suspense>
   );
 }

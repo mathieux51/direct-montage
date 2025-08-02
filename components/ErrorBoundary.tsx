@@ -75,7 +75,7 @@ export default class ErrorBoundary extends Component<Props, State> {
               <div className="mb-6">
                 <p className="text-gray-300 mb-4">
                   We encountered an unexpected error while processing your request.
-                  Don't worry, your audio files are safe.
+                  Don&apos;t worry, your audio files are safe.
                 </p>
                 
                 <div className="bg-red-900 border border-red-700 rounded-md p-4 mb-4">
