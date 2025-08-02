@@ -57,9 +57,9 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
         />
       </svg>
       <p className="mt-2 text-sm text-gray-300">
-        Click to upload or drag and drop
+        Cliquez pour charger ou glissez-déposez
       </p>
-      <p className="text-xs text-gray-400">Audio files only</p>
+      <p className="text-xs text-gray-400">Fichiers audio uniquement</p>
     </div>
   );
 }

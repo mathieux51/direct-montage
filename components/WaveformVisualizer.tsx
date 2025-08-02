@@ -240,7 +240,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 z-10">
               <div className="flex items-center space-x-2">
                 <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-400"></div>
-                <span className="text-gray-300">Loading waveform...</span>
+                <span className="text-gray-300">Chargement de la forme d&apos;onde...</span>
               </div>
             </div>
           )}
@@ -268,14 +268,14 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                 onClick={handlePlayFromBeginning}
                 className="px-3 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm"
               >
-                Play from Start
+                Lire depuis le début
               </button>
               
               <button
                 onClick={handlePlayPause}
                 className="px-3 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm"
               >
-                {isPlaying ? 'Pause' : 'Play from Cursor'}
+                {isPlaying ? 'Pause' : 'Lire depuis le curseur'}
               </button>
 
               <button
@@ -283,7 +283,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                 disabled={!hasRegion}
                 className="px-3 py-2 bg-purple-600 text-white rounded-md hover:bg-purple-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600 text-sm"
               >
-                Play Selection
+                Lire la sélection
               </button>
               
               <button
@@ -294,7 +294,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                     : 'bg-gray-600 hover:bg-gray-700'
                 }`}
               >
-                {hasRegion ? 'Remove Region' : 'Select Region'}
+                {hasRegion ? 'Supprimer la région' : 'Sélectionner une région'}
               </button>
             </div>
             
@@ -306,36 +306,36 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
           <div className="flex flex-col space-y-4 border-t border-gray-600 pt-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <span className="text-sm font-medium text-gray-300">Zoom:</span>
+                <span className="text-sm font-medium text-gray-300">Zoom :</span>
                 <div className="flex items-center space-x-2">
                   <button
                     onClick={handleZoomToWindow}
                     className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm"
                   >
-                    Fit to Window
+                    Ajuster à la fenêtre
                   </button>
                   <button
                     onClick={handleZoomToSelection}
                     disabled={!hasRegion}
                     className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors text-sm disabled:opacity-50 disabled:cursor-not-allowed disabled:bg-gray-600 disabled:text-gray-400"
                   >
-                    Fit to Selection
+                    Ajuster à la sélection
                   </button>
                 </div>
                 <span className="text-sm text-gray-300">
-                  {zoom === 1 ? 'Window view' : `${zoom.toFixed(1)}x zoom`}
+                  {zoom === 1 ? 'Vue fenêtre' : `Zoom ${zoom.toFixed(1)}x`}
                 </span>
               </div>
               
               <div className="text-xs text-gray-400">
-                Scroll horizontally to navigate when zoomed
+                Faites défiler horizontalement pour naviguer en mode zoom
               </div>
             </div>
 
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-6">
                 <div className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-gray-300">Gain:</span>
+                  <span className="text-sm font-medium text-gray-300">Gain :</span>
                   <input
                     type="range"
                     min="0"
@@ -355,7 +355,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                   disabled={isProcessing}
                   className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  {isProcessing ? 'Processing...' : 'Apply Gain'}
+                  {isProcessing ? 'Traitement...' : 'Appliquer le gain'}
                 </button>
               </div>
               
@@ -364,13 +364,13 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                   onClick={onDownload}
                   className="px-3 py-1 bg-indigo-600 text-white rounded hover:bg-indigo-700 transition-colors text-sm"
                 >
-                  Download
+                  Télécharger
                 </button>
                 <button
                   onClick={onNewFile}
                   className="px-3 py-1 bg-gray-600 text-white rounded hover:bg-gray-700 transition-colors text-sm"
                 >
-                  New File
+                  Nouveau fichier
                 </button>
               </div>
             </div>

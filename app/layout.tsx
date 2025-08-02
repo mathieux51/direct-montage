@@ -27,7 +27,7 @@ const antipasto = localFont({
 
 export const metadata: Metadata = {
   title: "Direct Montage",
-  description: "Audio editing application with waveform visualization, frequency analysis, cropping, and gain control",
+  description: "Application d'édition audio avec visualisation de forme d'onde, analyse de fréquence, découpage et contrôle de gain",
 };
 
 export default function RootLayout({
@@ -36,7 +36,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="fr">
       <body
         className={`${antipasto.variable} antialiased`}
       >

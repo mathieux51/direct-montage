@@ -68,19 +68,19 @@ export default class ErrorBoundary extends Component<Props, State> {
                   />
                 </svg>
                 <h1 className="text-2xl font-bold text-white">
-                  Oops! Something went wrong
+                  Oups ! Quelque chose s&apos;est mal passé
                 </h1>
               </div>
 
               <div className="mb-6">
                 <p className="text-gray-300 mb-4">
-                  We encountered an unexpected error while processing your request.
-                  Don&apos;t worry, your audio files are safe.
+                  Nous avons rencontré une erreur inattendue lors du traitement de votre demande.
+                  Ne vous inquiétez pas, vos fichiers audio sont en sécurité.
                 </p>
                 
                 <div className="bg-red-900 border border-red-700 rounded-md p-4 mb-4">
                   <h2 className="text-sm font-semibold text-red-300 mb-2">
-                    Error Details:
+                    Détails de l&apos;erreur :
                   </h2>
                   <p className="text-sm text-red-200 font-mono">
                     {this.state.error.message}
@@ -90,7 +90,7 @@ export default class ErrorBoundary extends Component<Props, State> {
                 {process.env.NODE_ENV === 'development' && this.state.errorInfo && (
                   <details className="bg-gray-900 border border-gray-600 rounded-md p-4">
                     <summary className="cursor-pointer text-sm font-semibold text-gray-300 mb-2">
-                      Stack Trace (Development Only)
+                      Trace de la pile (développement uniquement)
                     </summary>
                     <pre className="text-xs text-gray-400 overflow-auto">
                       {this.state.error.stack}
@@ -106,13 +106,13 @@ export default class ErrorBoundary extends Component<Props, State> {
                   onClick={this.resetError}
                   className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors"
                 >
-                  Try Again
+                  Réessayer
                 </button>
                 <button
                   onClick={() => window.location.reload()}
                   className="px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition-colors"
                 >
-                  Reload Page
+                  Recharger la page
                 </button>
               </div>
             </div>

@@ -177,7 +177,7 @@ function HomeContent() {
                   value={fileName}
                   onChange={(e) => setFileName(e.target.value)}
                   className="text-xl font-semibold bg-transparent text-white border-none outline-none focus:bg-gray-700 focus:px-2 focus:py-1 focus:rounded transition-all duration-200 flex-1"
-                  placeholder="Enter file name..."
+                  placeholder="Entrez le nom du fichier..."
                 />
               </div>
               <WaveformVisualizer
@@ -209,11 +209,11 @@ function HomeContent() {
                   disabled={isProcessing || !cropRegion}
                   className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  {isProcessing ? 'Processing...' : 'Crop Selection'}
+                  {isProcessing ? 'Traitement...' : 'Découper la sélection'}
                 </button>
                 {cropRegion && (
                   <span className="text-sm text-gray-300">
-                    Selected: {cropRegion.start.toFixed(2)}s - {cropRegion.end.toFixed(2)}s
+                    Sélectionné : {cropRegion.start.toFixed(2)}s - {cropRegion.end.toFixed(2)}s
                   </span>
                 )}
               </div>
@@ -227,7 +227,7 @@ function HomeContent() {
 
 export default function Home() {
   return (
-    <Suspense fallback={<div className="min-h-screen py-8"><div className="max-w-6xl mx-auto px-4"><div className="animate-pulse text-white">Loading...</div></div></div>}>
+    <Suspense fallback={<div className="min-h-screen py-8"><div className="max-w-6xl mx-auto px-4"><div className="animate-pulse text-white">Chargement...</div></div></div>}>
       <HomeContent />
     </Suspense>
   );
