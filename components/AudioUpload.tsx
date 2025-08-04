@@ -1,14 +1,10 @@
 'use client';
 
-import { useRef } from 'react';
-
 interface AudioUploadProps {
   onFileSelect: (file: File) => void;
 }
 
 export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (file && file.type.startsWith('audio/')) {
@@ -16,7 +12,7 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
     }
   };
 
-  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
     const file = event.dataTransfer.files[0];
     if (file && file.type.startsWith('audio/')) {
@@ -24,26 +20,24 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
     }
   };
 
-  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+  const handleDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault();
   };
 
   return (
-    <div
-      className="border-2 border-dashed border-gray-500 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400 transition-colors bg-gray-800"
-      onClick={() => fileInputRef.current?.click()}
+    <label
+      className="block relative border-2 border-dashed border-gray-500 rounded-lg p-8 text-center cursor-pointer hover:border-gray-400 transition-colors bg-gray-800"
       onDrop={handleDrop}
       onDragOver={handleDragOver}
     >
       <input
-        ref={fileInputRef}
         type="file"
         accept="audio/*"
         onChange={handleFileChange}
-        className="hidden"
+        className="sr-only"
       />
       <svg
-        className="mx-auto h-12 w-12 text-gray-300"
+        className="mx-auto h-12 w-12 text-gray-300 pointer-events-none"
         stroke="currentColor"
         fill="none"
         viewBox="0 0 48 48"
@@ -56,10 +50,10 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
           strokeLinejoin="round"
         />
       </svg>
-      <p className="mt-2 text-sm text-gray-300">
+      <p className="mt-2 text-sm text-gray-300 pointer-events-none">
         Cliquez pour charger ou glissez-déposez
       </p>
-      <p className="text-xs text-gray-400">Fichiers audio uniquement</p>
-    </div>
+      <p className="text-xs text-gray-400 pointer-events-none">Fichiers audio uniquement</p>
+    </label>
   );
 }
