@@ -335,7 +335,9 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-6">
                 <div className="flex items-center space-x-3">
-                  <span className="text-sm font-medium text-gray-300">Gain :</span>
+                  <span className="text-sm font-medium text-gray-300">
+                    Gain{hasRegion ? ' (sélection)' : ' (global)'} :
+                  </span>
                   <input
                     type="range"
                     min="0"
@@ -355,7 +357,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                   disabled={isProcessing}
                   className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed text-sm"
                 >
-                  {isProcessing ? 'Traitement...' : 'Appliquer le gain'}
+                  {isProcessing ? 'Traitement...' : hasRegion ? 'Appliquer le gain à la sélection' : 'Appliquer le gain global'}
                 </button>
               </div>
               

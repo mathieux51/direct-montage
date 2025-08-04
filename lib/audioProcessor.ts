@@ -51,7 +51,8 @@ export async function cropAudio(
 
 export async function adjustGain(
   file: File,
-  gain: number
+  gain: number,
+  region?: { start: number; end: number }
 ): Promise<Blob> {
   const ffmpeg = await initFFmpeg();
   
@@ -61,14 +62,65 @@ export async function adjustGain(
   
   await ffmpeg.writeFile(inputName, await fetchFile(file));
   
-  const volumeFilter = `volume=${gain}`;
-  
-  await ffmpeg.exec([
-    '-i', inputName,
-    '-af', volumeFilter,
-    '-acodec', 'pcm_s16le',
-    outputName
-  ]);
+  if (region) {
+    // Apply gain only to the selected region
+    const beforeName = `before_${timestamp}.wav`;
+    const regionName = `region_${timestamp}.wav`;
+    const afterName = `after_${timestamp}.wav`;
+    const concatList = `concat_${timestamp}.txt`;
+    
+    // Extract parts
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-t', region.start.toString(),
+      '-acodec', 'copy',
+      beforeName
+    ]);
+    
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-ss', region.start.toString(),
+      '-t', (region.end - region.start).toString(),
+      '-af', `volume=${gain}`,
+      '-acodec', 'pcm_s16le',
+      regionName
+    ]);
+    
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-ss', region.end.toString(),
+      '-acodec', 'copy',
+      afterName
+    ]);
+    
+    // Create concat list
+    await ffmpeg.writeFile(concatList, `file '${beforeName}'\nfile '${regionName}'\nfile '${afterName}'`);
+    
+    // Concatenate
+    await ffmpeg.exec([
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', concatList,
+      '-acodec', 'pcm_s16le',
+      outputName
+    ]);
+    
+    // Cleanup
+    await ffmpeg.deleteFile(beforeName);
+    await ffmpeg.deleteFile(regionName);
+    await ffmpeg.deleteFile(afterName);
+    await ffmpeg.deleteFile(concatList);
+  } else {
+    // Apply gain to entire file
+    const volumeFilter = `volume=${gain}`;
+    
+    await ffmpeg.exec([
+      '-i', inputName,
+      '-af', volumeFilter,
+      '-acodec', 'pcm_s16le',
+      outputName
+    ]);
+  }
   
   const data = await ffmpeg.readFile(outputName);
   
