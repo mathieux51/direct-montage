@@ -43,10 +43,16 @@ function HomeContent() {
             const historyRequest = historyStore.getAll();
             
             historyRequest.onsuccess = () => {
-              const histories = historyRequest.result;
-              histories.sort((a: any, b: any) => a.index - b.index);
+              const histories = historyRequest.result as Array<{
+                data: ArrayBuffer;
+                name: string;
+                type: string;
+                gain: number;
+                index: number;
+              }>;
+              histories.sort((a, b) => a.index - b.index);
               
-              histories.forEach((item: any) => {
+              histories.forEach((item) => {
                 const historyFile = new File([item.data], item.name, { type: item.type });
                 historyData.push({ file: historyFile, gain: item.gain });
               });
