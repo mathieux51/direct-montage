@@ -22,51 +22,109 @@ function HomeContent() {
   useEffect(() => {
     const loadStoredAudio = async () => {
       // Check if there's a shared recording from direct-podcast
-      const isShared = searchParams.get('shared') === 'true';
+      const sharedType = searchParams.get('shared');
       const sharedFilename = searchParams.get('filename');
       
-      if (isShared) {
+      if (sharedType === 'data') {
         try {
-          // Try to load from shared IndexedDB
-          const sharedRequest = indexedDB.open('DirectPodcastShared', 1);
+          // Load data directly from URL parameters
+          const base64Data = searchParams.get('data');
+          const fileType = searchParams.get('type') || 'audio/wav';
           
-          sharedRequest.onsuccess = async () => {
-            const sharedDb = sharedRequest.result;
-            const sharedTransaction = sharedDb.transaction(['recordings'], 'readonly');
-            const sharedStore = sharedTransaction.objectStore('recordings');
-            const sharedAudioRequest = sharedStore.get('latest');
+          if (base64Data && sharedFilename) {
+            // Convert base64 back to blob
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: fileType });
             
-            sharedAudioRequest.onsuccess = async () => {
-              const sharedResult = sharedAudioRequest.result;
-              if (sharedResult && sharedResult.data) {
-                const file = new File([sharedResult.data], sharedFilename || sharedResult.filename, { 
-                  type: sharedResult.data.type || 'audio/wav' 
-                });
-                setAudioFile(file);
-                setProcessedFile(file);
-                setFileName(sharedFilename || sharedResult.filename);
-                
-                // Initialize history with the shared file
-                setAudioHistory([{ file, gain: 1 }]);
-                setHistoryIndex(0);
-                setGain(1);
-                
-                // Clear the shared parameter from URL
-                const params = new URLSearchParams(searchParams.toString());
-                params.delete('shared');
-                params.delete('filename');
-                router.push(`?${params.toString()}`, { scroll: false });
-                
-                // Clear the shared recording to prevent re-use
-                const clearTransaction = sharedDb.transaction(['recordings'], 'readwrite');
-                clearTransaction.objectStore('recordings').delete('latest');
-              }
-            };
-          };
-          
+            const file = new File([blob], decodeURIComponent(sharedFilename), { type: fileType });
+            setAudioFile(file);
+            setProcessedFile(file);
+            setFileName(decodeURIComponent(sharedFilename));
+            
+            // Initialize history with the shared file
+            setAudioHistory([{ file, gain: 1 }]);
+            setHistoryIndex(0);
+            setGain(1);
+            
+            // Clear the shared parameters from URL
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('shared');
+            params.delete('filename');
+            params.delete('data');
+            params.delete('type');
+            router.push(`?${params.toString()}`, { scroll: false });
+          }
           return;
-        } catch (err) {
-          console.error('Failed to load shared recording:', err);
+        } catch {
+          // Show user-friendly error for URL data loading failure
+          alert('Erreur lors du chargement du fichier partagé. Le fichier pourrait être corrompu ou trop volumineux.');
+          // Clear problematic parameters and continue with normal loading
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete('shared');
+          params.delete('filename');
+          params.delete('data');
+          params.delete('type');
+          router.push(`?${params.toString()}`, { scroll: false });
+        }
+      } else if (sharedType === 'session') {
+        try {
+          // Load data from sessionStorage
+          const base64Data = sessionStorage.getItem('sharedAudioData');
+          const filename = sessionStorage.getItem('sharedAudioFilename');
+          const fileType = sessionStorage.getItem('sharedAudioType') || 'audio/wav';
+          
+          if (base64Data && filename) {
+            // Convert base64 back to blob
+            const binaryString = atob(base64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            const blob = new Blob([bytes], { type: fileType });
+            
+            const file = new File([blob], filename, { type: fileType });
+            setAudioFile(file);
+            setProcessedFile(file);
+            setFileName(filename);
+            
+            // Initialize history with the shared file
+            setAudioHistory([{ file, gain: 1 }]);
+            setHistoryIndex(0);
+            setGain(1);
+            
+            // Clear sessionStorage and URL parameters
+            sessionStorage.removeItem('sharedAudioData');
+            sessionStorage.removeItem('sharedAudioFilename');
+            sessionStorage.removeItem('sharedAudioType');
+            
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('shared');
+            params.delete('filename');
+            router.push(`?${params.toString()}`, { scroll: false });
+          } else {
+            // No data found in sessionStorage
+            alert('Aucun fichier audio partagé trouvé. Veuillez réessayer depuis Direct Podcast.');
+            const params = new URLSearchParams(searchParams.toString());
+            params.delete('shared');
+            params.delete('filename');
+            router.push(`?${params.toString()}`, { scroll: false });
+          }
+          return;
+        } catch {
+          // Show user-friendly error for sessionStorage loading failure
+          alert('Erreur lors du chargement du fichier partagé depuis la session. Veuillez réessayer.');
+          // Clear sessionStorage and URL parameters
+          sessionStorage.removeItem('sharedAudioData');
+          sessionStorage.removeItem('sharedAudioFilename');
+          sessionStorage.removeItem('sharedAudioType');
+          const params = new URLSearchParams(searchParams.toString());
+          params.delete('shared');
+          params.delete('filename');
+          router.push(`?${params.toString()}`, { scroll: false });
         }
       }
       
