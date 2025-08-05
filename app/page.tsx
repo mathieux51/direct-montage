@@ -20,11 +20,15 @@ function HomeContent() {
   const [isReceivingSharedFile, setIsReceivingSharedFile] = useState(false);
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ArrayBuffer>>(new Map());
   const [isWaitingForShare, setIsWaitingForShare] = useState(false);
+  const [hasReceivedSharedFile, setHasReceivedSharedFile] = useState(false);
 
-  // Check for sharing mode immediately on mount
+  // Check for sharing mode immediately on mount - only once
   useEffect(() => {
-    const sharingMode = searchParams.get('sharing')
-    if (sharingMode === 'true') {
+    // Get sharing mode from current URL at mount time
+    const currentSearchParams = new URLSearchParams(window.location.search)
+    const sharingMode = currentSearchParams.get('sharing')
+    
+    if (sharingMode === 'true' && !hasReceivedSharedFile) {
       setIsWaitingForShare(true)
       
       // Send ready signal to direct-podcast
@@ -67,13 +71,14 @@ function HomeContent() {
         }
       }
     }
-  }, [searchParams])
+  }, []) // Only run on mount, don't depend on searchParams
 
   // Load stored audio only once on mount
   useEffect(() => {
     const loadStoredAudio = async () => {
-      // Check if we're in sharing mode
-      const sharingMode = searchParams.get('sharing')
+      // Check if we're in sharing mode at mount time
+      const currentSearchParams = new URLSearchParams(window.location.search)
+      const sharingMode = currentSearchParams.get('sharing')
       if (sharingMode === 'true') {
         return // Don't load from storage, wait for shared file
       }
@@ -147,6 +152,7 @@ function HomeContent() {
         // Immediately update loading state
         setIsWaitingForShare(false)
         setIsReceivingSharedFile(true)
+        setHasReceivedSharedFile(true)
         
         try {
           const blob = new Blob([arrayBuffer], { type: fileType })
@@ -171,6 +177,7 @@ function HomeContent() {
         // Update loading state immediately on first chunk
         setIsWaitingForShare(false)
         setIsReceivingSharedFile(true)
+        setHasReceivedSharedFile(true)
         
         // Store the chunk
         setReceivedChunks(prevChunks => {
@@ -467,7 +474,7 @@ function HomeContent() {
           Direct Montage
         </h1>
         
-        {isWaitingForShare ? (
+        {isWaitingForShare && !hasReceivedSharedFile ? (
           <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
             <div className="animate-pulse">
               <div className="text-xl font-semibold text-white mb-4">
