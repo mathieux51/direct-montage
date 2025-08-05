@@ -32,6 +32,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [firstTapTime, setFirstTapTime] = useState<number | null>(null);
   const [isSelectingRegion, setIsSelectingRegion] = useState(false);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -76,6 +77,15 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       setErrorMessage(error.message || 'Erreur lors du chargement de la forme d\'onde');
     });
 
+    // Add loading progress event if available
+    wavesurfer.on('loading', (percent: number) => {
+      // Keep loading state true while loading
+      if (percent < 100) {
+        setIsLoading(true);
+        setLoadError(false);
+      }
+    });
+
     wavesurfer.on('audioprocess', () => {
       setCurrentTime(wavesurfer.getCurrentTime());
     });
@@ -104,37 +114,25 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       setDuration(0);
       setLoadError(false);
       setErrorMessage('');
+      setRetryCount(0); // Reset retry count for new file
       
       const objectUrl = URL.createObjectURL(audioFile);
       
-      // Add timeout for loading (shorter for Firefox, even shorter for Firefox mobile)
-      const isFirefox = navigator.userAgent.toLowerCase().indexOf('firefox') > -1;
-      const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
-      const isFirefoxMobile = isFirefox && isMobile;
-      
-      let timeoutDuration = 60000; // Default 60s (increased from 30s)
-      if (isFirefoxMobile) {
-        timeoutDuration = 20000; // 20s for Firefox mobile (increased from 8s)
-      } else if (isFirefox) {
-        timeoutDuration = 40000; // 40s for Firefox desktop (increased from 15s)
-      }
-      
+      // Set up a reasonable timeout only as a last resort fallback
       const loadTimeout = setTimeout(() => {
-        // Only show timeout error if still loading AND not ready yet
+        // Only timeout if we're still loading and not ready after a generous amount of time
         if (isLoading && !isReady) {
           setIsLoading(false);
           setLoadError(true);
-          if (isFirefoxMobile) {
-            setErrorMessage('Firefox mobile a des limitations avec les gros fichiers audio. Essayez avec un fichier plus petit ou utilisez Chrome mobile.');
-          } else {
-            setErrorMessage('Le chargement a pris trop de temps. Le fichier audio est peut-être trop volumineux.');
-          }
+          setErrorMessage('Le fichier audio prend trop de temps à charger. Vérifiez que le fichier n&apos;est pas corrompu.');
         }
-      }, timeoutDuration);
+      }, 120000); // 2 minutes - very generous timeout as fallback only
       
       try {
+        // Let WaveSurfer handle the loading - it will fire 'ready' or 'error' events
         wavesurferRef.current.load(objectUrl);
       } catch (error) {
+        clearTimeout(loadTimeout);
         setIsLoading(false);
         setLoadError(true);
         setErrorMessage(error instanceof Error ? error.message : 'Erreur lors du chargement du fichier audio');
@@ -145,7 +143,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
         URL.revokeObjectURL(objectUrl);
       };
     }
-  }, [audioFile, isLoading]);
+  }, [audioFile]);
 
 
   useEffect(() => {
@@ -287,6 +285,24 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
     return `${minutes}:${secs.toString().padStart(2, '0')}`;
   };
 
+  const handleRetryLoad = () => {
+    if (audioFile && wavesurferRef.current && retryCount < 3) {
+      setRetryCount(prev => prev + 1);
+      setLoadError(false);
+      setIsLoading(true);
+      setErrorMessage('');
+      
+      const objectUrl = URL.createObjectURL(audioFile);
+      try {
+        wavesurferRef.current.load(objectUrl);
+      } catch (error) {
+        setIsLoading(false);
+        setLoadError(true);
+        setErrorMessage(error instanceof Error ? error.message : 'Erreur lors du chargement du fichier audio');
+      }
+    }
+  };
+
   // Touch event handlers for mobile region selection (two-tap approach)
   const handleTouchStart = (e: React.TouchEvent) => {
     e.preventDefault(); // Prevent any default touch behavior
@@ -370,9 +386,13 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
         >
           {isLoading && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-900 bg-opacity-90 z-10">
-              <div className="flex items-center space-x-2">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-indigo-400"></div>
-                <span className="text-gray-300">Chargement de la forme d&apos;onde...</span>
+              <div className="flex flex-col items-center space-y-3">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-400"></div>
+                <span className="text-gray-300 text-center">
+                  Chargement du fichier audio...
+                  <br />
+                  <span className="text-sm text-gray-400">Cela peut prendre quelques secondes pour les gros fichiers</span>
+                </span>
               </div>
             </div>
           )}
@@ -382,7 +402,20 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               <p className="text-gray-300 mb-2 font-medium">Erreur de chargement</p>
-              <p className="text-sm text-gray-400 text-center max-w-md">{errorMessage}</p>
+              <p className="text-sm text-gray-400 text-center max-w-md mb-4">{errorMessage}</p>
+              {retryCount < 3 && (
+                <button
+                  onClick={handleRetryLoad}
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition-colors text-sm"
+                >
+                  Réessayer {retryCount > 0 && `(${retryCount}/3)`}
+                </button>
+              )}
+              {retryCount >= 3 && (
+                <p className="text-xs text-gray-500 text-center">
+                  Plusieurs tentatives ont échoué. Vérifiez que le fichier n&apos;est pas corrompu.
+                </p>
+              )}
             </div>
           )}
         </div>
