@@ -1,8 +1,6 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  basePath: '/montage',
-  assetPrefix: '/montage',
   reactStrictMode: false,
   webpack: (config, { isServer }) => {
     config.experiments = {
