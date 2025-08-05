@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import AudioUpload from '@/components/AudioUpload';
 import WaveformVisualizer from '@/components/WaveformVisualizer';
 import { cropAudio, adjustGain } from '@/lib/audioProcessor';
+import { getLatestSharedAudioFile, clearSharedAudioFiles } from '@/lib/sharedDB';
 
 function HomeContent() {
   const router = useRouter();
@@ -17,61 +18,49 @@ function HomeContent() {
   const [fileName, setFileName] = useState('');
   const [audioHistory, setAudioHistory] = useState<Array<{file: File, gain: number}>>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-  const [isReceivingSharedFile, setIsReceivingSharedFile] = useState(false);
-  const [receivedChunks, setReceivedChunks] = useState<Map<number, ArrayBuffer>>(new Map());
-  const [isWaitingForShare, setIsWaitingForShare] = useState(false);
+  const [isLoadingSharedFile, setIsLoadingSharedFile] = useState(false);
   const [hasReceivedSharedFile, setHasReceivedSharedFile] = useState(false);
 
-  // Check for sharing mode immediately on mount - only once
+  // Check for sharing mode and load shared file
   useEffect(() => {
-    // Get sharing mode from current URL at mount time
     const currentSearchParams = new URLSearchParams(window.location.search)
     const sharingMode = currentSearchParams.get('sharing')
     
     if (sharingMode === 'true' && !hasReceivedSharedFile) {
-      setIsWaitingForShare(true)
+      setIsLoadingSharedFile(true)
       
-      // Send ready signal to direct-podcast
-      if (window.opener && !window.opener.closed) {
-        let retries = 0
-        let acknowledged = false
-        const maxRetries = 5
-        
-        // Listen for acknowledgment
-        const handleAck = (event: MessageEvent) => {
-          if (event.origin === 'https://directpodcast.fr' && event.data === 'READY_ACKNOWLEDGED') {
-            acknowledged = true
-            window.removeEventListener('message', handleAck)
-          }
-        }
-        window.addEventListener('message', handleAck)
-        
-        const sendReady = () => {
-          if (acknowledged) return
+      const loadSharedFile = async () => {
+        try {
+          const sharedFile = await getLatestSharedAudioFile()
           
-          try {
-            window.opener.postMessage('MONTAGE_READY', 'https://directpodcast.fr')
-            retries++
+          if (sharedFile) {
+            // Create File from shared data
+            const blob = new Blob([sharedFile.arrayBuffer], { type: sharedFile.fileType })
+            const file = new File([blob], sharedFile.filename, { type: sharedFile.fileType })
             
-            // Keep sending until acknowledged or max retries
-            if (retries < maxRetries && !acknowledged) {
-              requestAnimationFrame(sendReady)
-            }
-          } catch {
-            // Opener might be from a different origin in dev, ignore
+            // Set the file in the app
+            setAudioFile(file)
+            setProcessedFile(file)
+            setFileName(sharedFile.filename)
+            setAudioHistory([{ file, gain: 1 }])
+            setHistoryIndex(0)
+            setGain(1)
+            setHasReceivedSharedFile(true)
+            
+            // Clear the shared database
+            await clearSharedAudioFiles()
+            
           }
-        }
-        
-        // Start sending ready signal
-        sendReady()
-        
-        // Cleanup on unmount
-        return () => {
-          window.removeEventListener('message', handleAck)
+        } catch {
+          alert('Erreur lors du chargement du fichier partagé.')
+        } finally {
+          setIsLoadingSharedFile(false)
         }
       }
+      
+      loadSharedFile()
     }
-  }, []) // Only run on mount, don't depend on searchParams
+  }, [hasReceivedSharedFile])
 
   // Load stored audio only once on mount
   useEffect(() => {
@@ -137,109 +126,6 @@ function HomeContent() {
     loadStoredAudio();
   }, []); // Only load from DB on mount
 
-  // Handle shared files from direct-podcast
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      // Verify origin for security
-      if (event.origin !== 'https://directpodcast.fr' && event.origin !== 'http://localhost:3001') {
-        return
-      }
-
-      if (event.data.type === 'SHARED_AUDIO_FILE') {
-        // Handle complete file transfer
-        const { filename, fileType, arrayBuffer } = event.data
-        
-        // Immediately update loading state
-        setIsWaitingForShare(false)
-        setIsReceivingSharedFile(true)
-        setHasReceivedSharedFile(true)
-        
-        try {
-          const blob = new Blob([arrayBuffer], { type: fileType })
-          const file = new File([blob], filename, { type: fileType })
-          
-          // Set file immediately - WaveformVisualizer will handle loading properly
-          setAudioFile(file)
-          setProcessedFile(file)
-          setFileName(filename)
-          setAudioHistory([{ file, gain: 1 }])
-          setHistoryIndex(0)
-          setGain(1)
-          setIsReceivingSharedFile(false)
-        } catch {
-          alert('Erreur lors de la réception du fichier partagé.')
-          setIsReceivingSharedFile(false)
-        }
-      } else if (event.data.type === 'SHARED_AUDIO_CHUNK') {
-        // Handle chunked file transfer
-        const { chunkIndex, totalChunks, chunk, filename, fileType } = event.data
-        
-        // Update loading state immediately on first chunk
-        setIsWaitingForShare(false)
-        setIsReceivingSharedFile(true)
-        setHasReceivedSharedFile(true)
-        
-        // Store the chunk
-        setReceivedChunks(prevChunks => {
-          const newChunks = new Map(prevChunks)
-          newChunks.set(chunkIndex, chunk)
-          
-          // Check if we have all chunks
-          if (newChunks.size === totalChunks) {
-            // Reconstruct the file
-            const orderedChunks: ArrayBuffer[] = []
-            for (let i = 0; i < totalChunks; i++) {
-              const chunk = newChunks.get(i)
-              if (chunk) {
-                orderedChunks.push(chunk)
-              }
-            }
-            
-            // Combine all chunks
-            const totalLength = orderedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
-            const combinedBuffer = new ArrayBuffer(totalLength)
-            const combinedView = new Uint8Array(combinedBuffer)
-            let offset = 0
-            
-            for (const chunk of orderedChunks) {
-              combinedView.set(new Uint8Array(chunk), offset)
-              offset += chunk.byteLength
-            }
-            
-            // Create file from combined buffer
-            try {
-              const blob = new Blob([combinedBuffer], { type: fileType })
-              const file = new File([blob], filename, { type: fileType })
-              
-              // Set file immediately - WaveformVisualizer will handle loading properly
-              setAudioFile(file)
-              setProcessedFile(file)
-              setFileName(filename)
-              setAudioHistory([{ file, gain: 1 }])
-              setHistoryIndex(0)
-              setGain(1)
-              setIsReceivingSharedFile(false)
-              
-              // Clear chunks
-              setReceivedChunks(new Map())
-            } catch {
-              alert('Erreur lors de la reconstruction du fichier partagé.')
-              setIsReceivingSharedFile(false)
-              setReceivedChunks(new Map())
-            }
-          }
-          
-          return newChunks
-        })
-      }
-    }
-
-    window.addEventListener('message', handleMessage)
-    
-    return () => {
-      window.removeEventListener('message', handleMessage)
-    }
-  }, [])
 
   // Handle URL parameters separately
   useEffect(() => {
@@ -474,35 +360,14 @@ function HomeContent() {
           Direct Montage
         </h1>
         
-        {isWaitingForShare && !hasReceivedSharedFile ? (
+        {isLoadingSharedFile ? (
           <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
             <div className="animate-pulse">
               <div className="text-xl font-semibold text-white mb-4">
-                En attente du fichier depuis Direct Podcast...
+                Chargement du fichier partagé...
               </div>
               <div className="text-gray-300 mb-4">
-                Connexion en cours...
-              </div>
-              <div className="text-sm text-gray-400 bg-gray-700 rounded-lg p-4 max-w-md mx-auto">
-                <p className="mb-2">Si vous avez ouvert ce lien manuellement :</p>
-                <ol className="text-left list-decimal list-inside space-y-1">
-                  <li>Retournez sur Direct Podcast</li>
-                  <li>Cliquez sur &quot;Partager vers Direct Montage&quot;</li>
-                  <li>Votre fichier sera transféré automatiquement</li>
-                </ol>
-              </div>
-            </div>
-          </div>
-        ) : isReceivingSharedFile ? (
-          <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
-            <div className="animate-pulse">
-              <div className="text-xl font-semibold text-white mb-4">
-                Réception du fichier depuis Direct Podcast...
-              </div>
-              <div className="text-gray-300">
-                {receivedChunks.size > 0 && (
-                  <div>Chunks reçus: {receivedChunks.size}</div>
-                )}
+                Récupération depuis Direct Podcast...
               </div>
             </div>
           </div>
