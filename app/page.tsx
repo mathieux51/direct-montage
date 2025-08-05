@@ -23,6 +23,12 @@ function HomeContent() {
   // Load stored audio only once on mount
   useEffect(() => {
     const loadStoredAudio = async () => {
+      // Check if we're in sharing mode
+      const sharingMode = searchParams.get('sharing')
+      if (sharingMode === 'true') {
+        return // Don't load from storage, wait for shared file
+      }
+      
       // Normal loading from local storage
       const db = await openDB();
       const transaction = db.transaction(['audioFiles', 'audioHistory'], 'readonly');
