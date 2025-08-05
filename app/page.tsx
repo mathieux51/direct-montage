@@ -107,7 +107,7 @@ function HomeContent() {
             setAudioHistory([{ file, gain: 1 }])
             setHistoryIndex(0)
             setGain(1)
-          }, 100)
+          }, 500)
         } catch {
           alert('Erreur lors de la réception du fichier partagé.')
         }
@@ -161,7 +161,7 @@ function HomeContent() {
                 
                 // Clear chunks
                 setReceivedChunks(new Map())
-              }, 100)
+              }, 500)
             } catch {
               alert('Erreur lors de la reconstruction du fichier partagé.')
               setIsReceivingSharedFile(false)

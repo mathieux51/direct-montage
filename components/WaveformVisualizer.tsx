@@ -112,15 +112,16 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
       const isFirefoxMobile = isFirefox && isMobile;
       
-      let timeoutDuration = 30000; // Default 30s
+      let timeoutDuration = 60000; // Default 60s (increased from 30s)
       if (isFirefoxMobile) {
-        timeoutDuration = 8000; // 8s for Firefox mobile
+        timeoutDuration = 20000; // 20s for Firefox mobile (increased from 8s)
       } else if (isFirefox) {
-        timeoutDuration = 15000; // 15s for Firefox desktop
+        timeoutDuration = 40000; // 40s for Firefox desktop (increased from 15s)
       }
       
       const loadTimeout = setTimeout(() => {
-        if (isLoading) {
+        // Only show timeout error if still loading AND not ready yet
+        if (isLoading && !isReady) {
           setIsLoading(false);
           setLoadError(true);
           if (isFirefoxMobile) {
