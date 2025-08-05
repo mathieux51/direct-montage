@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
@@ -7,22 +7,22 @@ const nextConfig: NextConfig = {
       ...config.experiments,
       asyncWebAssembly: true,
       layers: true,
-    };
+    }
 
     config.module.rules.push({
       test: /\.wasm$/,
-      type: "webassembly/async",
-    });
+      type: 'webassembly/async',
+    })
 
     if (!isServer) {
       config.resolve.fallback = {
         ...config.resolve.fallback,
         fs: false,
         path: false,
-      };
+      }
     }
 
-    return config;
+    return config
   },
   // Temporarily disable strict CORS headers for debugging
   // headers: async () => {
@@ -42,6 +42,6 @@ const nextConfig: NextConfig = {
   //     },
   //   ];
   // },
-};
+}
 
-export default nextConfig;
+export default nextConfig

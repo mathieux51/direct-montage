@@ -12,8 +12,8 @@ jobs:
       NOW_ORG_ID: ${{ secrets.NOW_ORG_ID }}
       NOW_PROJECT_ID: ${{ secrets.NOW_PROJECT_ID_MONTAGE }}
       NOW_TOKEN: ${{ secrets.NOW_TOKEN }}
-      ALIAS: "montage.directpodcast.fr"
-      PROJECT_NAME: "direct-montage"
+      ALIAS: 'montage.directpodcast.fr'
+      PROJECT_NAME: 'direct-montage'
       TEAM: ${{ secrets.TEAM }}
 
     steps:

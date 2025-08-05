@@ -23,11 +23,13 @@ A Next.js-based web application for audio file processing with WebAssembly suppo
 ## Getting Started
 
 1. Install dependencies:
+
 ```bash
 npm install
 ```
 
 2. Run the development server:
+
 ```bash
 npm run dev
 ```
@@ -38,7 +40,7 @@ npm run dev
 
 1. **Upload Audio**: Click or drag an audio file onto the upload area
 2. **Visualize**: View the waveform and frequency analysis
-3. **Edit**: 
+3. **Edit**:
    - Click "Select Region" to mark an area for cropping
    - Adjust the gain slider to change volume
 4. **Process**: Click "Crop Selection" or "Apply Gain" to process
