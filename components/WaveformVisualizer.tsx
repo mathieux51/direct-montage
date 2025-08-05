@@ -55,12 +55,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       backend: isFirefox ? 'MediaElement' : 'WebAudio',
       interact: !isFirefoxMobile, // Disable interactions on Firefox mobile
       normalize: !isFirefoxMobile, // Disable normalization on Firefox mobile
-      partialRender: true,
-      forceDecode: false,
-      splitChannels: false,
-      mediaControls: false,
-      removeMediaElementOnDestroy: false,
-      pixelRatio: isFirefoxMobile ? 1 : window.devicePixelRatio || 1, // Force lower pixel ratio
+      mediaControls: false
     });
 
     const regions = wavesurfer.registerPlugin(RegionsPlugin.create());
@@ -149,7 +144,7 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
         URL.revokeObjectURL(objectUrl);
       };
     }
-  }, [audioFile]);
+  }, [audioFile, isLoading]);
 
 
   useEffect(() => {
