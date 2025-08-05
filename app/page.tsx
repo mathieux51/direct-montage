@@ -26,6 +26,46 @@ function HomeContent() {
     const sharingMode = searchParams.get('sharing')
     if (sharingMode === 'true') {
       setIsWaitingForShare(true)
+      
+      // Send ready signal to direct-podcast
+      if (window.opener && !window.opener.closed) {
+        let retries = 0
+        let acknowledged = false
+        const maxRetries = 5
+        
+        // Listen for acknowledgment
+        const handleAck = (event: MessageEvent) => {
+          if (event.origin === 'https://directpodcast.fr' && event.data === 'READY_ACKNOWLEDGED') {
+            acknowledged = true
+            window.removeEventListener('message', handleAck)
+          }
+        }
+        window.addEventListener('message', handleAck)
+        
+        const sendReady = () => {
+          if (acknowledged) return
+          
+          try {
+            window.opener.postMessage('MONTAGE_READY', 'https://directpodcast.fr')
+            retries++
+            
+            // Keep sending until acknowledged or max retries
+            if (retries < maxRetries && !acknowledged) {
+              requestAnimationFrame(sendReady)
+            }
+          } catch {
+            // Opener might be from a different origin in dev, ignore
+          }
+        }
+        
+        // Start sending ready signal
+        sendReady()
+        
+        // Cleanup on unmount
+        return () => {
+          window.removeEventListener('message', handleAck)
+        }
+      }
     }
   }, [searchParams])
 
@@ -433,8 +473,16 @@ function HomeContent() {
               <div className="text-xl font-semibold text-white mb-4">
                 En attente du fichier depuis Direct Podcast...
               </div>
-              <div className="text-gray-300">
+              <div className="text-gray-300 mb-4">
                 Connexion en cours...
+              </div>
+              <div className="text-sm text-gray-400 bg-gray-700 rounded-lg p-4 max-w-md mx-auto">
+                <p className="mb-2">Si vous avez ouvert ce lien manuellement :</p>
+                <ol className="text-left list-decimal list-inside space-y-1">
+                  <li>Retournez sur Direct Podcast</li>
+                  <li>Cliquez sur &quot;Partager vers Direct Montage&quot;</li>
+                  <li>Votre fichier sera transféré automatiquement</li>
+                </ol>
               </div>
             </div>
           </div>

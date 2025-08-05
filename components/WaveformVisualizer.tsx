@@ -118,15 +118,20 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       
       const objectUrl = URL.createObjectURL(audioFile);
       
-      // Set up a reasonable timeout only as a last resort fallback
+      // Set up a progressive timeout system based on file size
+      const fileSize = audioFile.size;
+      const estimatedLoadTime = Math.max(30000, fileSize / 50000); // At least 30s, or ~50KB/s
+      const maxTimeout = Math.min(300000, estimatedLoadTime * 2); // Max 5 minutes, double the estimate
+      
       const loadTimeout = setTimeout(() => {
-        // Only timeout if we're still loading and not ready after a generous amount of time
+        // Only timeout if we're still loading and not ready after calculated time
         if (isLoading && !isReady) {
           setIsLoading(false);
           setLoadError(true);
-          setErrorMessage('Le fichier audio prend trop de temps à charger. Vérifiez que le fichier n&apos;est pas corrompu.');
+          const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+          setErrorMessage(`Le fichier audio (${sizeMB}MB) prend trop de temps à charger. Vérifiez votre connexion ou essayez un fichier plus petit.`);
         }
-      }, 120000); // 2 minutes - very generous timeout as fallback only
+      }, maxTimeout);
       
       try {
         // Let WaveSurfer handle the loading - it will fire 'ready' or 'error' events
@@ -268,14 +273,15 @@ export default function WaveformVisualizer({ audioFile, cropRegion, onRegionUpda
       setZoom(clampedZoom);
       
       // Center the view on the selected region after zoom is applied
-      setTimeout(() => {
+      // Use requestAnimationFrame to ensure zoom has been applied
+      requestAnimationFrame(() => {
         if (wavesurferRef.current && regionRef.current) {
           const regionCenter = (regionRef.current.start + regionRef.current.end) / 2;
           const totalDuration = wavesurferRef.current.getDuration();
           const scrollPosition = (regionCenter / totalDuration) - 0.5; // Center the region
           wavesurferRef.current.seekTo(Math.max(0, Math.min(1, scrollPosition + 0.5)));
         }
-      }, 100);
+      });
     }
   };
 
