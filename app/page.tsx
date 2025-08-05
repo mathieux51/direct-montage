@@ -21,6 +21,56 @@ function HomeContent() {
   // Load stored audio only once on mount
   useEffect(() => {
     const loadStoredAudio = async () => {
+      // Check if there's a shared recording from direct-podcast
+      const isShared = searchParams.get('shared') === 'true';
+      const sharedFilename = searchParams.get('filename');
+      
+      if (isShared) {
+        try {
+          // Try to load from shared IndexedDB
+          const sharedRequest = indexedDB.open('DirectPodcastShared', 1);
+          
+          sharedRequest.onsuccess = async () => {
+            const sharedDb = sharedRequest.result;
+            const sharedTransaction = sharedDb.transaction(['recordings'], 'readonly');
+            const sharedStore = sharedTransaction.objectStore('recordings');
+            const sharedAudioRequest = sharedStore.get('latest');
+            
+            sharedAudioRequest.onsuccess = async () => {
+              const sharedResult = sharedAudioRequest.result;
+              if (sharedResult && sharedResult.data) {
+                const file = new File([sharedResult.data], sharedFilename || sharedResult.filename, { 
+                  type: sharedResult.data.type || 'audio/wav' 
+                });
+                setAudioFile(file);
+                setProcessedFile(file);
+                setFileName(sharedFilename || sharedResult.filename);
+                
+                // Initialize history with the shared file
+                setAudioHistory([{ file, gain: 1 }]);
+                setHistoryIndex(0);
+                setGain(1);
+                
+                // Clear the shared parameter from URL
+                const params = new URLSearchParams(searchParams.toString());
+                params.delete('shared');
+                params.delete('filename');
+                router.push(`?${params.toString()}`, { scroll: false });
+                
+                // Clear the shared recording to prevent re-use
+                const clearTransaction = sharedDb.transaction(['recordings'], 'readwrite');
+                clearTransaction.objectStore('recordings').delete('latest');
+              }
+            };
+          };
+          
+          return;
+        } catch (err) {
+          console.error('Failed to load shared recording:', err);
+        }
+      }
+      
+      // Normal loading from local storage
       const db = await openDB();
       const transaction = db.transaction(['audioFiles', 'audioHistory'], 'readonly');
       const audioStore = transaction.objectStore('audioFiles');
