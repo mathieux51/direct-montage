@@ -19,6 +19,15 @@ function HomeContent() {
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [isReceivingSharedFile, setIsReceivingSharedFile] = useState(false);
   const [receivedChunks, setReceivedChunks] = useState<Map<number, ArrayBuffer>>(new Map());
+  const [isWaitingForShare, setIsWaitingForShare] = useState(false);
+
+  // Check for sharing mode immediately on mount
+  useEffect(() => {
+    const sharingMode = searchParams.get('sharing')
+    if (sharingMode === 'true') {
+      setIsWaitingForShare(true)
+    }
+  }, [searchParams])
 
   // Load stored audio only once on mount
   useEffect(() => {
@@ -95,6 +104,10 @@ function HomeContent() {
         // Handle complete file transfer
         const { filename, fileType, arrayBuffer } = event.data
         
+        // Immediately update loading state
+        setIsWaitingForShare(false)
+        setIsReceivingSharedFile(true)
+        
         try {
           const blob = new Blob([arrayBuffer], { type: fileType })
           const file = new File([blob], filename, { type: fileType })
@@ -106,13 +119,17 @@ function HomeContent() {
           setAudioHistory([{ file, gain: 1 }])
           setHistoryIndex(0)
           setGain(1)
+          setIsReceivingSharedFile(false)
         } catch {
           alert('Erreur lors de la réception du fichier partagé.')
+          setIsReceivingSharedFile(false)
         }
       } else if (event.data.type === 'SHARED_AUDIO_CHUNK') {
         // Handle chunked file transfer
         const { chunkIndex, totalChunks, chunk, filename, fileType } = event.data
         
+        // Update loading state immediately on first chunk
+        setIsWaitingForShare(false)
         setIsReceivingSharedFile(true)
         
         // Store the chunk
@@ -410,7 +427,18 @@ function HomeContent() {
           Direct Montage
         </h1>
         
-        {isReceivingSharedFile ? (
+        {isWaitingForShare ? (
+          <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
+            <div className="animate-pulse">
+              <div className="text-xl font-semibold text-white mb-4">
+                En attente du fichier depuis Direct Podcast...
+              </div>
+              <div className="text-gray-300">
+                Connexion en cours...
+              </div>
+            </div>
+          </div>
+        ) : isReceivingSharedFile ? (
           <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
             <div className="animate-pulse">
               <div className="text-xl font-semibold text-white mb-4">
