@@ -17,6 +17,8 @@ function HomeContent() {
   const [fileName, setFileName] = useState('');
   const [audioHistory, setAudioHistory] = useState<Array<{file: File, gain: number}>>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
+  const [isReceivingSharedFile, setIsReceivingSharedFile] = useState(false);
+  const [receivedChunks, setReceivedChunks] = useState<Map<number, ArrayBuffer>>(new Map());
 
   // Load stored audio only once on mount
   useEffect(() => {
@@ -74,6 +76,104 @@ function HomeContent() {
 
     loadStoredAudio();
   }, []); // Only load from DB on mount
+
+  // Handle shared files from direct-podcast
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin for security
+      if (event.origin !== 'https://directpodcast.fr' && event.origin !== 'http://localhost:3001') {
+        return
+      }
+
+      if (event.data.type === 'SHARED_AUDIO_FILE') {
+        // Handle complete file transfer
+        const { filename, fileType, arrayBuffer } = event.data
+        
+        try {
+          const blob = new Blob([arrayBuffer], { type: fileType })
+          const file = new File([blob], filename, { type: fileType })
+          
+          setAudioFile(file)
+          setProcessedFile(file)
+          setFileName(filename)
+          setAudioHistory([{ file, gain: 1 }])
+          setHistoryIndex(0)
+          setGain(1)
+          
+          // Show success message
+          alert(`Fichier "${filename}" reçu avec succès depuis Direct Podcast!`)
+        } catch {
+          alert('Erreur lors de la réception du fichier partagé.')
+        }
+      } else if (event.data.type === 'SHARED_AUDIO_CHUNK') {
+        // Handle chunked file transfer
+        const { chunkIndex, totalChunks, chunk, filename, fileType } = event.data
+        
+        setIsReceivingSharedFile(true)
+        
+        // Store the chunk
+        setReceivedChunks(prevChunks => {
+          const newChunks = new Map(prevChunks)
+          newChunks.set(chunkIndex, chunk)
+          
+          // Check if we have all chunks
+          if (newChunks.size === totalChunks) {
+            // Reconstruct the file
+            const orderedChunks: ArrayBuffer[] = []
+            for (let i = 0; i < totalChunks; i++) {
+              const chunk = newChunks.get(i)
+              if (chunk) {
+                orderedChunks.push(chunk)
+              }
+            }
+            
+            // Combine all chunks
+            const totalLength = orderedChunks.reduce((sum, chunk) => sum + chunk.byteLength, 0)
+            const combinedBuffer = new ArrayBuffer(totalLength)
+            const combinedView = new Uint8Array(combinedBuffer)
+            let offset = 0
+            
+            for (const chunk of orderedChunks) {
+              combinedView.set(new Uint8Array(chunk), offset)
+              offset += chunk.byteLength
+            }
+            
+            // Create file from combined buffer
+            try {
+              const blob = new Blob([combinedBuffer], { type: fileType })
+              const file = new File([blob], filename, { type: fileType })
+              
+              setAudioFile(file)
+              setProcessedFile(file)
+              setFileName(filename)
+              setAudioHistory([{ file, gain: 1 }])
+              setHistoryIndex(0)
+              setGain(1)
+              setIsReceivingSharedFile(false)
+              
+              // Clear chunks
+              setReceivedChunks(new Map())
+              
+              // Show success message
+              alert(`Fichier "${filename}" reçu avec succès depuis Direct Podcast!`)
+            } catch {
+              alert('Erreur lors de la reconstruction du fichier partagé.')
+              setIsReceivingSharedFile(false)
+              setReceivedChunks(new Map())
+            }
+          }
+          
+          return newChunks
+        })
+      }
+    }
+
+    window.addEventListener('message', handleMessage)
+    
+    return () => {
+      window.removeEventListener('message', handleMessage)
+    }
+  }, [])
 
   // Handle URL parameters separately
   useEffect(() => {
@@ -308,7 +408,20 @@ function HomeContent() {
           Direct Montage
         </h1>
         
-        {!audioFile ? (
+        {isReceivingSharedFile ? (
+          <div className="bg-gray-800 rounded-lg shadow-lg p-8 text-center">
+            <div className="animate-pulse">
+              <div className="text-xl font-semibold text-white mb-4">
+                Réception du fichier depuis Direct Podcast...
+              </div>
+              <div className="text-gray-300">
+                {receivedChunks.size > 0 && (
+                  <div>Chunks reçus: {receivedChunks.size}</div>
+                )}
+              </div>
+            </div>
+          </div>
+        ) : !audioFile ? (
           <AudioUpload onFileSelect={handleFileSelect} />
         ) : (
           <div className="space-y-6">
