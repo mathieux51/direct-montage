@@ -11,7 +11,7 @@ export default function BridgePage() {
 
       if (event.data.type === 'SAVE_AUDIO_DATA') {
         const { messageId, data } = event.data
-        
+
         try {
           // Save audio data to IndexedDB
           await saveSharedAudioFile(
@@ -21,17 +21,23 @@ export default function BridgePage() {
           )
 
           // Send success response
-          event.source?.postMessage({
-            type: 'AUDIO_DATA_SAVED',
-            messageId
-          }, { targetOrigin: event.origin })
+          event.source?.postMessage(
+            {
+              type: 'AUDIO_DATA_SAVED',
+              messageId,
+            },
+            { targetOrigin: event.origin }
+          )
         } catch (error) {
           // Send error response
-          event.source?.postMessage({
-            type: 'AUDIO_DATA_ERROR',
-            messageId,
-            error: error instanceof Error ? error.message : 'Unknown error'
-          }, { targetOrigin: event.origin })
+          event.source?.postMessage(
+            {
+              type: 'AUDIO_DATA_ERROR',
+              messageId,
+              error: error instanceof Error ? error.message : 'Unknown error',
+            },
+            { targetOrigin: event.origin }
+          )
         }
       }
     }
@@ -40,7 +46,10 @@ export default function BridgePage() {
     window.addEventListener('message', handleMessage)
 
     // Notify parent that bridge is ready
-    window.parent.postMessage({ type: 'BRIDGE_READY' }, 'https://directpodcast.fr')
+    window.parent.postMessage(
+      { type: 'BRIDGE_READY' },
+      'https://directpodcast.fr'
+    )
 
     return () => {
       window.removeEventListener('message', handleMessage)
@@ -48,13 +57,15 @@ export default function BridgePage() {
   }, [])
 
   return (
-    <div style={{ 
-      position: 'absolute', 
-      left: '-9999px', 
-      width: '1px', 
-      height: '1px',
-      opacity: 0 
-    }}>
+    <div
+      style={{
+        position: 'absolute',
+        left: '-9999px',
+        width: '1px',
+        height: '1px',
+        opacity: 0,
+      }}
+    >
       Bridge
     </div>
   )
