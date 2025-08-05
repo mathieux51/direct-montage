@@ -99,15 +99,15 @@ function HomeContent() {
           const blob = new Blob([arrayBuffer], { type: fileType })
           const file = new File([blob], filename, { type: fileType })
           
-          setAudioFile(file)
-          setProcessedFile(file)
-          setFileName(filename)
-          setAudioHistory([{ file, gain: 1 }])
-          setHistoryIndex(0)
-          setGain(1)
-          
-          // Show success message
-          alert(`Fichier "${filename}" reçu avec succès depuis Direct Podcast!`)
+          // Small delay to ensure proper file loading
+          setTimeout(() => {
+            setAudioFile(file)
+            setProcessedFile(file)
+            setFileName(filename)
+            setAudioHistory([{ file, gain: 1 }])
+            setHistoryIndex(0)
+            setGain(1)
+          }, 100)
         } catch {
           alert('Erreur lors de la réception du fichier partagé.')
         }
@@ -149,19 +149,19 @@ function HomeContent() {
               const blob = new Blob([combinedBuffer], { type: fileType })
               const file = new File([blob], filename, { type: fileType })
               
-              setAudioFile(file)
-              setProcessedFile(file)
-              setFileName(filename)
-              setAudioHistory([{ file, gain: 1 }])
-              setHistoryIndex(0)
-              setGain(1)
-              setIsReceivingSharedFile(false)
-              
-              // Clear chunks
-              setReceivedChunks(new Map())
-              
-              // Show success message
-              alert(`Fichier "${filename}" reçu avec succès depuis Direct Podcast!`)
+              // Small delay to ensure proper file loading
+              setTimeout(() => {
+                setAudioFile(file)
+                setProcessedFile(file)
+                setFileName(filename)
+                setAudioHistory([{ file, gain: 1 }])
+                setHistoryIndex(0)
+                setGain(1)
+                setIsReceivingSharedFile(false)
+                
+                // Clear chunks
+                setReceivedChunks(new Map())
+              }, 100)
             } catch {
               alert('Erreur lors de la reconstruction du fichier partagé.')
               setIsReceivingSharedFile(false)
