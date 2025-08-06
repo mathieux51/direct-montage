@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
+  basePath: '/montage',
   reactStrictMode: false,
   webpack: (config, { isServer }) => {
     config.experiments = {
