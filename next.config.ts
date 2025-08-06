@@ -1,7 +1,8 @@
 import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
-  basePath: '/montage',
+  // basePath removed - handled by proxy from direct-podcast
+  assetPrefix: process.env.NODE_ENV === 'production' ? '/montage' : '',
   reactStrictMode: false,
   webpack: (config, { isServer }) => {
     config.experiments = {
