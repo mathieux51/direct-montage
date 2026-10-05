@@ -7,11 +7,12 @@ echo "🚀 Starting deployment for direct-montage..."
 echo "📦 Installing Vercel CLI..."
 npm i -g vercel@latest
 
-# Deploy to Vercel
+# Deploy to Vercel (production, so the project's production domains follow main)
 echo "🚀 Deploying to Vercel..."
 vercel deploy \
+  --prod \
   --no-clipboard \
-  --confirm \
+  --yes \
   --token $NOW_TOKEN \
   --scope $TEAM \
   --meta gitCommitSha=$GITHUB_SHA \
