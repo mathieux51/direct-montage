@@ -1,65 +1,34 @@
 'use client'
 
 import { useState } from 'react'
+import { isAudioFile } from '@/lib/files'
 
 interface AudioUploadProps {
-  onFileSelect: (file: File) => void
+  onFilesSelect: (files: File[]) => void
 }
 
-export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
+export default function AudioUpload({ onFilesSelect }: AudioUploadProps) {
   const [error, setError] = useState<string | null>(null)
 
-  const validateAudioFile = (file: File): boolean => {
-    // Check MIME type
-    if (file.type.startsWith('audio/')) {
-      return true
-    }
-
-    // Check file extension as fallback
-    const audioExtensions = [
-      '.wav',
-      '.mp3',
-      '.m4a',
-      '.aac',
-      '.ogg',
-      '.flac',
-      '.wma',
-      '.aiff',
-      '.opus',
-      '.webm',
-    ]
-    const fileName = file.name.toLowerCase()
-    return audioExtensions.some((ext) => fileName.endsWith(ext))
+  const handleFiles = (files: File[]) => {
+    const audio = files.filter(isAudioFile)
+    const rejected = files.filter((file) => !isAudioFile(file))
+    setError(
+      rejected.length > 0
+        ? `Format non supporté : ${rejected.map((file) => file.name).join(', ')}. Veuillez sélectionner des fichiers audio.`
+        : null
+    )
+    if (audio.length > 0) onFilesSelect(audio)
   }
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (file) {
-      if (validateAudioFile(file)) {
-        setError(null)
-        onFileSelect(file)
-      } else {
-        setError(
-          `Format non supporté: ${file.name}. Veuillez sélectionner un fichier audio.`
-        )
-        event.target.value = '' // Reset input
-      }
-    }
+    handleFiles(Array.from(event.target.files ?? []))
+    event.target.value = '' // Allow choosing the same file again
   }
 
   const handleDrop = (event: React.DragEvent<HTMLLabelElement>) => {
     event.preventDefault()
-    const file = event.dataTransfer.files[0]
-    if (file) {
-      if (validateAudioFile(file)) {
-        setError(null)
-        onFileSelect(file)
-      } else {
-        setError(
-          `Format non supporté: ${file.name}. Veuillez sélectionner un fichier audio.`
-        )
-      }
-    }
+    handleFiles(Array.from(event.dataTransfer.files))
   }
 
   const handleDragOver = (event: React.DragEvent<HTMLLabelElement>) => {
@@ -74,9 +43,10 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
     >
       <input
         type='file'
+        multiple
         onChange={handleFileChange}
         className='absolute inset-0 w-full h-full opacity-0 cursor-pointer'
-        aria-label='Sélectionner un fichier audio'
+        aria-label='Sélectionner des fichiers audio'
       />
       <svg
         className='mx-auto h-12 w-12 text-gray-300 pointer-events-none'
@@ -96,7 +66,7 @@ export default function AudioUpload({ onFileSelect }: AudioUploadProps) {
         Cliquez pour charger ou glissez-déposez
       </p>
       <p className='text-xs text-gray-400 pointer-events-none'>
-        Fichiers audio uniquement
+        Fichiers audio uniquement. Plusieurs fichiers = plusieurs pistes.
       </p>
       {error && (
         <p className='mt-2 text-sm text-red-400 pointer-events-none'>{error}</p>
