@@ -171,3 +171,32 @@ export const CloseIcon = (p: IconProps) => (
     <path d='M18 6 6 18M6 6l12 12' />
   </Icon>
 )
+
+export const LockIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x='5' y='11' width='14' height='10' rx='2' />
+    <path d='M8 11V7a4 4 0 0 1 8 0v4' />
+  </Icon>
+)
+
+export const UnlockIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <rect x='5' y='11' width='14' height='10' rx='2' />
+    <path d='M8 11V7a4 4 0 0 1 7.75-1.4' />
+  </Icon>
+)
+
+export const AudioFileIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d='M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z' />
+    <path d='M14 2v6h6' />
+    <circle cx='10' cy='17' r='2' />
+    <path d='M12 17v-6l3 1.5' />
+  </Icon>
+)
+
+export const AddTrackIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d='M3 6h18M3 12h10M3 18h8M17 14v8M13 18h8' />
+  </Icon>
+)

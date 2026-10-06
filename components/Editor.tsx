@@ -13,17 +13,18 @@ import {
 import AudioUpload from './AudioUpload'
 import Timeline from './Timeline'
 import Toolbar from './Toolbar'
-import { CloseIcon, DownloadIcon, PlusIcon } from './icons'
+import { AddTrackIcon, AudioFileIcon, CloseIcon, DownloadIcon } from './icons'
 import {
   clipsInSelection,
   createClip,
   createId,
   createTrack,
+  groupSizes,
   hasRange,
   projectDuration,
 } from '@/lib/audio/edit'
 import { PlaybackEngine, PROJECT_SAMPLE_RATE } from '@/lib/audio/engine'
-import { mixdownToWav } from '@/lib/audio/mixdown'
+import { mixdownToMp3, mixdownToWav } from '@/lib/audio/mixdown'
 import { SourceStore } from '@/lib/audio/sources'
 import type { Project, Selection, Track } from '@/lib/audio/types'
 import { editorReducer, emptyEditorState } from '@/lib/editorState'
@@ -99,6 +100,18 @@ export default function Editor() {
   const { project, selection } = state
   const duration = projectDuration(project)
   const regions = clipsInSelection(project, selection)
+  // The padlock groups the touched regions, or ungroups them when they all
+  // already belong to one group.
+  const sizes = groupSizes(project)
+  const isGrouped = (groupId?: string) =>
+    !!groupId && (sizes.get(groupId) ?? 0) > 1
+  const units = new Set(
+    regions.map((clip) => (isGrouped(clip.groupId) ? clip.groupId : clip.id))
+  )
+  const oneGroup =
+    units.size === 1 && regions.every((clip) => isGrouped(clip.groupId))
+  const groupAction = oneGroup ? 'ungroup' : 'group'
+  const canGroup = oneGroup || units.size > 1
 
   /** Decodes files and adds one track per file, or starts a new project with them. */
   const importSources = useCallback(
@@ -313,6 +326,7 @@ export default function Editor() {
   // Playback
 
   const getPlayhead = useCallback(() => engine.position(), [engine])
+  const getLevels = useCallback(() => engine.levels(), [engine])
 
   const startPlayback = useCallback(
     (from: number, to: number, range: boolean) => {
@@ -489,7 +503,9 @@ export default function Editor() {
       else if (mod && key === 'v') dispatch({ type: 'paste' })
       else if ((mod && key === 'i') || (!mod && key === 's'))
         dispatch({ type: 'split' })
-      else if ((key === 'delete' || key === 'backspace') && keys.hasRange) {
+      else if (mod && key === 'g') {
+        dispatch({ type: event.shiftKey ? 'ungroup' : 'group' })
+      } else if ((key === 'delete' || key === 'backspace') && keys.hasRange) {
         dispatch({ type: 'delete' })
       } else if (key === 'arrowup' && keys.hasRegion)
         dispatch({ type: 'gain', delta: 1 })
@@ -510,26 +526,51 @@ export default function Editor() {
 
   // Project actions
 
-  const exportWav = async () => {
+  /** WAV HD is 24-bit, MP3 HD is 320 kbit/s; both at 48 kHz. */
+  const exportMix = async (format: 'wav' | 'mp3') => {
     const { project: current, name } = stateRef.current
     if (projectDuration(current, false) <= 0) {
       setMessage('Rien à exporter : toutes les pistes sont vides ou muettes.')
       return
     }
-    setBusy('Export… 0 %')
+    const label = format.toUpperCase()
+    const progress = (ratio: number) =>
+      setBusy(`Export ${label}… ${Math.round(ratio * 100)} %`)
+    progress(0)
+    const getSource = (id: string) => store.get(id)?.buffer
     try {
-      const blob = await mixdownToWav(
-        current,
-        (id) => store.get(id)?.buffer,
-        PROJECT_SAMPLE_RATE,
-        (ratio) => setBusy(`Export… ${Math.round(ratio * 100)} %`)
-      )
-      downloadBlob(blob, `${exportName(name)}.wav`)
+      const blob =
+        format === 'wav'
+          ? await mixdownToWav(
+              current,
+              getSource,
+              PROJECT_SAMPLE_RATE,
+              24,
+              progress
+            )
+          : await mixdownToMp3(
+              current,
+              getSource,
+              PROJECT_SAMPLE_RATE,
+              progress
+            )
+      downloadBlob(blob, `${exportName(name)}.${format}`)
     } catch {
       setMessage("L'export a échoué.")
     } finally {
       setBusy(null)
     }
+  }
+
+  const addBlankTrack = () => {
+    const { tracks } = stateRef.current.project
+    const names = new Set(tracks.map((track) => track.name))
+    let number = tracks.length + 1
+    while (names.has(`Piste ${number}`)) number += 1
+    dispatch({
+      type: 'addTracks',
+      tracks: [createTrack(`Piste ${number}`, tracks)],
+    })
   }
 
   const newProject = async () => {
@@ -650,17 +691,36 @@ export default function Editor() {
             onClick={() => fileInput.current?.click()}
             className='flex h-9 touch-manipulation items-center gap-1.5 rounded-md bg-gray-700 px-3 text-sm text-white transition-colors hover:bg-gray-600'
           >
-            <PlusIcon size={16} />
-            Ajouter une piste
+            <AudioFileIcon size={16} />
+            Ajouter un fichier son
           </button>
           <button
             type='button'
-            onClick={exportWav}
+            onClick={addBlankTrack}
+            className='flex h-9 touch-manipulation items-center gap-1.5 rounded-md bg-gray-700 px-3 text-sm text-white transition-colors hover:bg-gray-600'
+          >
+            <AddTrackIcon size={16} />
+            Ajouter une piste vierge
+          </button>
+          <button
+            type='button'
+            onClick={() => exportMix('wav')}
             disabled={busy !== null}
+            title='WAV 24 bits, 48 kHz'
             className='flex h-9 touch-manipulation items-center gap-1.5 rounded-md bg-indigo-600 px-3 text-sm text-white transition-colors hover:bg-indigo-700 disabled:opacity-50'
           >
             <DownloadIcon size={16} />
-            Exporter WAV
+            Exporter WAV (HD)
+          </button>
+          <button
+            type='button'
+            onClick={() => exportMix('mp3')}
+            disabled={busy !== null}
+            title='MP3 320 kbit/s, 48 kHz'
+            className='flex h-9 touch-manipulation items-center gap-1.5 rounded-md bg-indigo-600 px-3 text-sm text-white transition-colors hover:bg-indigo-700 disabled:opacity-50'
+          >
+            <DownloadIcon size={16} />
+            Exporter MP3 (HD)
           </button>
           <button
             type='button'
@@ -693,6 +753,9 @@ export default function Editor() {
         hasRange={selection !== null && hasRange(selection)}
         canPaste={state.clipboard !== null}
         hasRegion={regions.length > 0}
+        groupAction={groupAction}
+        canGroup={canGroup}
+        getLevels={getLevels}
         fadeSeconds={fadeSeconds}
         onFadeSecondsChange={setFadeSeconds}
         onTogglePlay={togglePlay}
@@ -704,6 +767,7 @@ export default function Editor() {
         onPaste={() => dispatch({ type: 'paste' })}
         onDelete={() => dispatch({ type: 'delete' })}
         onSplit={() => dispatch({ type: 'split' })}
+        onGroupToggle={() => dispatch({ type: groupAction })}
         onFade={(edge) =>
           dispatch({
             type: 'fade',
@@ -737,6 +801,9 @@ export default function Editor() {
           onMoveClip={(clipId, trackId, start) =>
             dispatch({ type: 'moveClip', clipId, trackId, start })
           }
+          onTrimClip={(clipId, edge, time, sourceDuration) =>
+            dispatch({ type: 'trimClip', clipId, edge, time, sourceDuration })
+          }
           onGain={(delta) => dispatch({ type: 'gain', delta })}
           onToggleMute={(trackId) => dispatch({ type: 'toggleMute', trackId })}
           onRemoveTrack={(trackId) =>
@@ -760,15 +827,17 @@ export default function Editor() {
       <p className='text-xs leading-relaxed text-gray-400'>
         <span className='md:hidden'>
           Glissez sur une piste pour sélectionner. Faites glisser la barre du
-          haut d&apos;une région pour la déplacer. Touchez deux fois une région
-          pour la sélectionner. Deux doigts pour zoomer et défiler.
+          haut d&apos;une région pour la déplacer, ses extrémités pour la
+          rallonger ou la raccourcir. Touchez deux fois une région pour la
+          sélectionner. Deux doigts pour zoomer et défiler.
         </span>
         <span className='hidden md:inline'>
           Glissez sur une piste pour sélectionner (Maj+clic pour étendre),
-          faites glisser la barre du haut d&apos;une région pour la déplacer,
-          double-cliquez pour sélectionner une région entière. Raccourcis :
-          Espace lecture, Ctrl+X/C/V couper/copier/coller, Suppr supprimer, S
-          scinder, ↑/↓ volume, Ctrl+Z annuler.
+          faites glisser la barre du haut d&apos;une région pour la déplacer et
+          ses extrémités pour la rallonger ou la raccourcir, double-cliquez pour
+          sélectionner une région entière. Raccourcis : Espace lecture,
+          Ctrl+X/C/V couper/copier/coller, Suppr supprimer, S scinder, Ctrl+G
+          grouper, ↑/↓ volume, Ctrl+Z annuler.
         </span>
       </p>
 

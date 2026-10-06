@@ -4,12 +4,15 @@ import {
   copyRange,
   deleteRange,
   findClip,
+  groupSelection,
   hasRange,
   insertClipboard,
   moveClip,
   projectDuration,
   setFade,
   splitAtSelection,
+  trimClip,
+  ungroupSelection,
 } from './audio/edit'
 import type { ClipboardData, Project, Selection, Track } from './audio/types'
 
@@ -35,6 +38,15 @@ export type EditorAction =
   | { type: 'renameTrack'; trackId: string; name: string }
   | { type: 'toggleMute'; trackId: string }
   | { type: 'moveClip'; clipId: string; trackId: string; start: number }
+  | {
+      type: 'trimClip'
+      clipId: string
+      edge: 'start' | 'end'
+      time: number
+      sourceDuration: number
+    }
+  | { type: 'group' }
+  | { type: 'ungroup' }
   | { type: 'cut' }
   | { type: 'copy' }
   | { type: 'paste' }
@@ -154,12 +166,14 @@ export function editorReducer(
       const [first] = action.tracks
       if (!first) return state
       const clip = first.clips[0]
+      // An empty track gets the cursor, so pasting goes straight into it.
+      const at = selection?.start ?? 0
       return commit(
         state,
         { ...project, tracks: [...project.tracks, ...action.tracks] },
         clip
           ? { trackIds: [first.id], start: clip.start, end: clipEnd(clip) }
-          : selection
+          : { trackIds: [first.id], start: at, end: at }
       )
     }
 
@@ -282,6 +296,38 @@ export function editorReducer(
         end: at + clipboard.duration,
       })
     }
+
+    case 'trimClip': {
+      const next = trimClip(
+        project,
+        action.clipId,
+        action.edge,
+        action.time,
+        action.sourceDuration
+      )
+      const trimmed = findClip(next, action.clipId)
+      return commit(
+        state,
+        next,
+        trimmed
+          ? {
+              trackIds: [trimmed.track.id],
+              start: trimmed.clip.start,
+              end: clipEnd(trimmed.clip),
+            }
+          : selection
+      )
+    }
+
+    case 'group':
+      return selection
+        ? commit(state, groupSelection(project, selection))
+        : state
+
+    case 'ungroup':
+      return selection
+        ? commit(state, ungroupSelection(project, selection))
+        : state
 
     case 'split':
       return selection

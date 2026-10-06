@@ -1,6 +1,6 @@
 import { dbToGain, fadeFactor, projectDuration } from './edit'
 import type { Clip, Project } from './types'
-import { toPcm16, wavHeader } from './wav'
+import { toPcm16, toPcm24, wavHeader, type BitDepth } from './wav'
 
 /** The part of an AudioBuffer the mixdown reads. */
 export interface AudioData {
@@ -10,18 +10,23 @@ export interface AudioData {
   getChannelData(channel: number): Float32Array
 }
 
+type GetSource = (sourceId: string) => AudioData | undefined
+type Progress = (ratio: number) => void
+
 const CHUNK_SECONDS = 10
+const MP3_BITRATE = 320
 
 /**
- * Mixes every unmuted track into a 16-bit WAV file. Works in chunks so long
- * projects never need one huge buffer.
+ * Mixes every unmuted track and hands the result to `onChunk` about ten
+ * seconds at a time, so long projects never need one huge buffer.
  */
-export async function mixdownToWav(
+export async function renderMix(
   project: Project,
-  getSource: (sourceId: string) => AudioData | undefined,
+  getSource: GetSource,
   sampleRate: number,
-  onProgress?: (ratio: number) => void
-): Promise<Blob> {
+  onChunk: (channels: Float32Array[]) => void,
+  onProgress?: Progress
+): Promise<{ frames: number; channels: number }> {
   const audible = { tracks: project.tracks.filter((track) => !track.muted) }
   const clips = audible.tracks.flatMap((track) => track.clips)
   const totalFrames = Math.ceil(projectDuration(audible) * sampleRate)
@@ -33,7 +38,6 @@ export async function mixdownToWav(
     )
   )
   const chunkFrames = CHUNK_SECONDS * sampleRate
-  const parts: BlobPart[] = [wavHeader(totalFrames, channelCount, sampleRate)]
 
   for (
     let chunkStart = 0;
@@ -49,11 +53,75 @@ export async function mixdownToWav(
       const source = getSource(clip.sourceId)
       if (source) mixClip(out, chunkStart, clip, source, sampleRate)
     }
-    parts.push(toPcm16(out))
+    onChunk(out)
     onProgress?.((chunkStart + frames) / totalFrames)
     await new Promise((resolve) => setTimeout(resolve, 0))
   }
-  return new Blob(parts, { type: 'audio/wav' })
+  return { frames: totalFrames, channels: channelCount }
+}
+
+/** The mix as a PCM WAV file (24-bit is the "HD" export). */
+export async function mixdownToWav(
+  project: Project,
+  getSource: GetSource,
+  sampleRate: number,
+  bitDepth: BitDepth,
+  onProgress?: Progress
+): Promise<Blob> {
+  const parts: BlobPart[] = []
+  const { frames, channels } = await renderMix(
+    project,
+    getSource,
+    sampleRate,
+    (chunk) => {
+      parts.push(bitDepth === 24 ? toPcm24(chunk) : toPcm16(chunk))
+    },
+    onProgress
+  )
+  return new Blob(
+    [wavHeader(frames, channels, sampleRate, bitDepth), ...parts],
+    {
+      type: 'audio/wav',
+    }
+  )
+}
+
+/** The mix as a 320 kbit/s MP3 file. The encoder only loads when needed. */
+export async function mixdownToMp3(
+  project: Project,
+  getSource: GetSource,
+  sampleRate: number,
+  onProgress?: Progress
+): Promise<Blob> {
+  const { createMp3Encoder } = await import('wasm-media-encoders')
+  const encoder = await createMp3Encoder()
+  const parts: BlobPart[] = []
+  let configured = false
+  await renderMix(
+    project,
+    getSource,
+    sampleRate,
+    (chunk) => {
+      if (!configured) {
+        encoder.configure({
+          sampleRate,
+          channels: chunk.length === 1 ? 1 : 2,
+          bitrate: MP3_BITRATE,
+        })
+        configured = true
+      }
+      for (const channel of chunk) {
+        for (let i = 0; i < channel.length; i++) {
+          channel[i] = Math.max(-1, Math.min(1, channel[i]))
+        }
+      }
+      // The encoder reuses its output buffer, so keep a copy.
+      parts.push(encoder.encode(chunk).slice())
+    },
+    onProgress
+  )
+  if (configured) parts.push(encoder.finalize().slice())
+  return new Blob(parts, { type: 'audio/mpeg' })
 }
 
 function mixClip(

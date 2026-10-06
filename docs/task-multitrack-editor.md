@@ -71,5 +71,44 @@ editor:
 ## Next Steps
 
 - [x] 2026-10-05: Committed and pushed to `main` (no Linear ticket).
-- Ideas if needed later: drag handles to trim region edges, drag-to-adjust
-  fades, MP3 export.
+- Ideas if needed later: drag-to-adjust fades.
+
+## Round 2: feedback (2026-10-06)
+
+### Objective
+
+- Lengthen (or shorten) a copied/pasted region at its start or end
+- Group / ungroup regions (padlock)
+- Export WAV (HD) or high-definition MP3 (two buttons)
+- Rename "Ajouter une piste" to "Ajouter un fichier son"
+- New "Ajouter une piste vierge" button
+- VU meter with the -12 dB mark, to set volumes
+- Confirmed: the red vertical lines in waveforms mark saturation
+
+### Progress
+
+- [x] Region edges: drag either end of a region's top bar (`trimClip`)
+- [x] Groups: `groupId` on regions, padlock toggle, Ctrl+G / Ctrl+Shift+G,
+      grouped regions move together (time and tracks), copies form new groups
+- [x] Exports: WAV 24-bit / 48 kHz and MP3 320 kbit/s / 48 kHz
+- [x] Buttons: "Ajouter un fichier son", "Ajouter une piste vierge"
+- [x] VU meter (peak, -60 to 0 dB, -12 dB mark, SAT light) + -12 dB guides on
+      every track
+- [x] Unit checks (25), browser checks in Chrome and WebKit (new features 20,
+      earlier suites 23 + 8 + 6), type-check, lint, build
+- [x] README update
+
+### Decisions
+
+- Lengthening never covers another region: if something is in the way it
+  slides right (the same rule as moving). A region cannot grow past the start
+  or end of its recording.
+- Resize handles are the ends of the top bar (grips drawn there), so starting a
+  range selection near a region edge in the waveform still selects.
+- Groups only tie movement together. Volume, fades and cuts still follow the
+  selection, so one region of a group can be adjusted alone.
+- WAV (HD) means 24-bit PCM; MP3 (HD) means 320 kbit/s CBR, both at 48 kHz.
+- MP3 encoding uses `wasm-media-encoders` (LAME in WebAssembly, about 3x
+  faster than the JavaScript port), loaded only when exporting MP3.
+- The meter is a peak meter (instant rise, slow fall, 1.5 s peak hold), since
+  the goal is avoiding saturation and placing peaks around -12 dB.

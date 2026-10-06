@@ -224,6 +224,20 @@ export function insertClipboard(
 ): { project: Project; trackIds: string[] } {
   const tracks = [...project.tracks]
   const trackIds: string[] = []
+  // Copies of grouped regions form a new group of their own.
+  const counts = new Map<string, number>()
+  for (const copied of clipboard.tracks) {
+    for (const clip of copied.clips) {
+      if (clip.groupId) {
+        counts.set(clip.groupId, (counts.get(clip.groupId) ?? 0) + 1)
+      }
+    }
+  }
+  const groupIds = new Map(
+    [...counts]
+      .filter(([, count]) => count > 1)
+      .map(([groupId]) => [groupId, createId('group')])
+  )
   clipboard.tracks.forEach((copied, i) => {
     const target = tracks[index + i] ?? createTrack(copied.name, tracks)
     const split = splitTrack(target, [at])
@@ -236,6 +250,7 @@ export function insertClipboard(
       ...clip,
       id: createId('clip'),
       start: clip.start + at,
+      groupId: clip.groupId ? groupIds.get(clip.groupId) : undefined,
     }))
     tracks[index + i] = { ...split, clips: sortClips([...kept, ...pasted]) }
     trackIds.push(target.id)
@@ -243,6 +258,22 @@ export function insertClipboard(
   return { project: { ...project, tracks }, trackIds }
 }
 
+/** The region and the other regions of its group, with their track index. */
+function groupMembers(project: Project, target: Clip) {
+  const members: { clip: Clip; trackIndex: number }[] = []
+  project.tracks.forEach((track, trackIndex) => {
+    for (const clip of track.clips) {
+      const sameGroup = target.groupId && clip.groupId === target.groupId
+      if (clip.id === target.id || sameGroup) members.push({ clip, trackIndex })
+    }
+  })
+  return members
+}
+
+/**
+ * Moves a region to `start` on another (or the same) track. The other regions
+ * of its group follow by the same amount of time and number of tracks.
+ */
 export function moveClip(
   project: Project,
   clipId: string,
@@ -250,26 +281,161 @@ export function moveClip(
   start: number
 ): Project {
   const found = findClip(project, clipId)
-  if (!found || !project.tracks.some((track) => track.id === trackId)) {
+  const toIndex = project.tracks.findIndex((track) => track.id === trackId)
+  if (!found || toIndex < 0) return project
+  const members = groupMembers(project, found.clip)
+  const fromIndex = project.tracks.indexOf(found.track)
+  // Keep every region at or after 0 and on an existing track.
+  const earliest = Math.min(...members.map((member) => member.clip.start))
+  const shift = Math.max(start - found.clip.start, -earliest)
+  const lowest = Math.min(...members.map((member) => member.trackIndex))
+  const highest = Math.max(...members.map((member) => member.trackIndex))
+  const trackShift = Math.min(
+    project.tracks.length - 1 - highest,
+    Math.max(-lowest, toIndex - fromIndex)
+  )
+  if (shift === 0 && trackShift === 0) return project
+
+  const ids = new Set(members.map((member) => member.clip.id))
+  const tracks = project.tracks.map((track) =>
+    track.clips.some((clip) => ids.has(clip.id))
+      ? { ...track, clips: track.clips.filter((clip) => !ids.has(clip.id)) }
+      : track
+  )
+  const ordered = [...members].sort((a, b) => a.clip.start - b.clip.start)
+  for (const member of ordered) {
+    const index = member.trackIndex + trackShift
+    const moved = { ...member.clip, start: member.clip.start + shift }
+    tracks[index] = {
+      ...tracks[index],
+      clips: placeClip(tracks[index].clips, moved),
+    }
+  }
+  return { ...project, tracks }
+}
+
+const MIN_TRIM_LENGTH = 0.05
+
+/**
+ * Moves one edge of a region to `time`: it grows back into its recording (up
+ * to `sourceDuration`) or shrinks. Growing never covers another region; what
+ * is in the way slides right, as when moving a region.
+ */
+export function trimClip(
+  project: Project,
+  clipId: string,
+  edge: 'start' | 'end',
+  time: number,
+  sourceDuration: number
+): Project {
+  const found = findClip(project, clipId)
+  if (!found) return project
+  const { track, clip } = found
+  const others = track.clips.filter((other) => other.id !== clipId)
+  let next: Clip
+  if (edge === 'end') {
+    const longest = Math.max(clip.duration, sourceDuration - clip.offset)
+    const duration = Math.min(
+      longest,
+      Math.max(MIN_TRIM_LENGTH, time - clip.start)
+    )
+    next = { ...clip, duration }
+  } else {
+    // The recording starts `offset` seconds before the region does.
+    const start = Math.min(
+      clipEnd(clip) - MIN_TRIM_LENGTH,
+      Math.max(clip.start - clip.offset, time)
+    )
+    const shift = start - clip.start
+    // It grows left only into free space; beyond that it moves right instead.
+    const floor = Math.max(
+      0,
+      ...others.filter((other) => other.start < clip.start).map(clipEnd)
+    )
+    next = {
+      ...clip,
+      start: Math.max(start, floor),
+      offset: clip.offset + shift,
+      duration: clip.duration - shift,
+    }
+  }
+  if (next.start === clip.start && next.duration === clip.duration) {
     return project
   }
-  const nextStart = Math.max(0, start)
-  if (found.track.id === trackId && found.clip.start === nextStart) {
-    return project
-  }
-  const moved = { ...found.clip, start: nextStart }
   return {
     ...project,
-    tracks: project.tracks.map((track) => {
-      const others = track.clips.filter((clip) => clip.id !== clipId)
-      if (track.id === trackId) {
-        return { ...track, clips: placeClip(others, moved) }
-      }
-      return others.length === track.clips.length
-        ? track
-        : { ...track, clips: others }
-    }),
+    tracks: project.tracks.map((item) =>
+      item === track ? { ...item, clips: placeClip(others, next) } : item
+    ),
   }
+}
+
+/** Applies `fn` to every region, keeping unchanged tracks and project as they were. */
+function mapClips(project: Project, fn: (clip: Clip) => Clip): Project {
+  let changed = false
+  const tracks = project.tracks.map((track) => {
+    let trackChanged = false
+    const clips = track.clips.map((clip) => {
+      const next = fn(clip)
+      if (next !== clip) trackChanged = true
+      return next
+    })
+    if (!trackChanged) return track
+    changed = true
+    return { ...track, clips }
+  })
+  return changed ? { ...project, tracks } : project
+}
+
+/** Number of regions in each group. */
+export function groupSizes(project: Project): Map<string, number> {
+  const sizes = new Map<string, number>()
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      if (clip.groupId) {
+        sizes.set(clip.groupId, (sizes.get(clip.groupId) ?? 0) + 1)
+      }
+    }
+  }
+  return sizes
+}
+
+/** Groups the regions touched by the selection, with their existing groups. */
+export function groupSelection(
+  project: Project,
+  selection: Selection
+): Project {
+  const touched = clipsInSelection(project, selection)
+  const groups = new Set(touched.map((clip) => clip.groupId).filter(Boolean))
+  const members = new Set(touched.map((clip) => clip.id))
+  for (const track of project.tracks) {
+    for (const clip of track.clips) {
+      if (clip.groupId && groups.has(clip.groupId)) members.add(clip.id)
+    }
+  }
+  if (members.size < 2) return project
+  const groupId = createId('group')
+  return mapClips(project, (clip) =>
+    members.has(clip.id) ? { ...clip, groupId } : clip
+  )
+}
+
+/** Dissolves every group that has a region touched by the selection. */
+export function ungroupSelection(
+  project: Project,
+  selection: Selection
+): Project {
+  const groups = new Set(
+    clipsInSelection(project, selection)
+      .map((clip) => clip.groupId)
+      .filter(Boolean)
+  )
+  if (groups.size === 0) return project
+  return mapClips(project, (clip) =>
+    clip.groupId && groups.has(clip.groupId)
+      ? { ...clip, groupId: undefined }
+      : clip
+  )
 }
 
 /**

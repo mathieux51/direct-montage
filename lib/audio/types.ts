@@ -15,6 +15,8 @@ export interface Clip {
   fadeIn: number
   /** Linear fade-out length in seconds, anchored at the clip end. */
   fadeOut: number
+  /** Regions sharing a group id move together. */
+  groupId?: string
 }
 
 export interface Track {

@@ -14,9 +14,12 @@ import {
   dbToGain,
   EPS,
   fadeFactor,
+  findClip,
+  groupSizes,
   hasRange,
   moveClip,
   projectDuration,
+  trimClip,
 } from '@/lib/audio/edit'
 import { peakRange } from '@/lib/audio/peaks'
 import type { SourceStore } from '@/lib/audio/sources'
@@ -47,6 +50,8 @@ const VOLUME_WIDTH = 118
 const VOLUME_HEIGHT = 34
 const MUTED_COLOR = '#6b7280'
 const PLAYHEAD_COLOR = '#ebcb8b'
+/** -12 dBFS as a linear level, shown as guide lines on every track. */
+const GUIDE_LEVEL = Math.pow(10, -12 / 20)
 
 /** Major tick spacing and minor tick spacing, in seconds. */
 const RULER_STEPS: [number, number][] = [
@@ -85,6 +90,12 @@ export interface TimelineProps {
   onSelect: (selection: Selection | null) => void
   onSeek: (time: number) => void
   onMoveClip: (clipId: string, trackId: string, start: number) => void
+  onTrimClip: (
+    clipId: string,
+    edge: 'start' | 'end',
+    time: number,
+    sourceDuration: number
+  ) => void
   onGain: (delta: number) => void
   onToggleMute: (trackId: string) => void
   onRemoveTrack: (trackId: string) => void
@@ -118,13 +129,20 @@ type Gesture =
       grab: number
       moved: boolean
     }
+  | {
+      kind: 'trim'
+      pointerId: number
+      origin: Point
+      clip: Clip
+      trackIndex: number
+      edge: 'start' | 'end'
+      moved: boolean
+    }
   | { kind: 'pinch'; distance: number; pxPerSec: number; anchorTime: number }
 
-interface MovePreview {
-  clipId: string
-  trackIndex: number
-  start: number
-}
+type Preview =
+  | { kind: 'move'; clipId: string; trackIndex: number; start: number }
+  | { kind: 'trim'; clipId: string; edge: 'start' | 'end'; time: number }
 
 interface Scene {
   project: Project
@@ -136,6 +154,9 @@ interface Scene {
   sources: SourceStore
   font: string
   activeClipId: string | null
+  groupSizes: Map<string, number>
+  /** Groups to outline: those of the selected or dragged regions. */
+  highlightGroups?: Set<string>
 }
 
 export default function Timeline(props: TimelineProps) {
@@ -145,35 +166,47 @@ export default function Timeline(props: TimelineProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const playheadRef = useRef<HTMLDivElement>(null)
   const [rootWidth, setRootWidth] = useState(0)
-  const [preview, setPreview] = useState<MovePreview | null>(null)
+  const [preview, setPreview] = useState<Preview | null>(null)
   const [font, setFont] = useState('sans-serif')
 
   const compact = rootWidth > 0 && rootWidth < 640
   const headerWidth = compact ? 92 : 148
   const laneHeight = compact ? 84 : 100
+  // Width of the grips at both ends of a region's top bar.
+  const grip = compact ? 14 : 8
   const width = Math.max(0, Math.floor(rootWidth - headerWidth))
   const height = RULER_HEIGHT + project.tracks.length * laneHeight
 
-  // The project as drawn: includes the region being dragged.
+  // The project as drawn: includes the region being dragged or resized.
   const shown = useMemo(() => {
-    const track = preview && project.tracks[preview.trackIndex]
-    return preview && track
+    if (!preview) return project
+    if (preview.kind === 'trim') {
+      return trimClip(
+        project,
+        preview.clipId,
+        preview.edge,
+        preview.time,
+        recordingLength(project, props.sources, preview.clipId)
+      )
+    }
+    const track = project.tracks[preview.trackIndex]
+    return track
       ? moveClip(project, preview.clipId, track.id, preview.start)
       : project
-  }, [project, preview])
+  }, [project, preview, props.sources])
   const duration = projectDuration(shown)
 
   // Pointer handlers span several renders, so they read the latest values here.
-  const latest = useRef({ props, shown, width, laneHeight, duration })
+  const latest = useRef({ props, shown, width, laneHeight, duration, grip })
   const viewRef = useRef(view)
   const gesture = useRef<Gesture | null>(null)
   const pointers = useRef(new Map<number, Point>())
   const lastTap = useRef<{ at: number; point: Point } | null>(null)
-  const previewRef = useRef<MovePreview | null>(null)
+  const previewRef = useRef<Preview | null>(null)
   const autoScroll = useRef({ frame: 0, speed: 0, point: { x: 0, y: 0 } })
 
   useLayoutEffect(() => {
-    latest.current = { props, shown, width, laneHeight, duration }
+    latest.current = { props, shown, width, laneHeight, duration, grip }
     viewRef.current = props.view
   })
 
@@ -211,6 +244,7 @@ export default function Timeline(props: TimelineProps) {
       sources: props.sources,
       font,
       activeClipId: preview?.clipId ?? null,
+      groupSizes: groupSizes(shown),
     })
   }, [
     shown,
@@ -263,10 +297,19 @@ export default function Timeline(props: TimelineProps) {
         const onHeader =
           point.y >= top + LANE_PADDING &&
           point.y <= top + LANE_PADDING + CLIP_HEADER
-        return { trackIndex: index, track, clip, onHeader }
+        // The ends of the top bar resize the region, the middle moves it.
+        const zone = Math.min(latest.current.grip, (x1 - x0) / 4)
+        const edge: 'start' | 'end' | null = !onHeader
+          ? null
+          : point.x - x0 <= zone
+            ? 'start'
+            : x1 - point.x <= zone
+              ? 'end'
+              : null
+        return { trackIndex: index, track, clip, onHeader, edge }
       }
     }
-    return { trackIndex: index, track, clip: null, onHeader: false }
+    return { trackIndex: index, track, clip: null, onHeader: false, edge: null }
   }
 
   const selectClip = (clip: Clip, track: Track) =>
@@ -276,25 +319,44 @@ export default function Timeline(props: TimelineProps) {
       end: clipEnd(clip),
     })
 
-  const snap = (start: number, clip: Clip) => {
-    const { project: committed } = latest.current.props
-    let best = start
-    let distance = SNAP_PX / viewRef.current.pxPerSec
-    for (const track of committed.tracks) {
+  /** Times a dragged edge sticks to: 0 and the edges of the other regions. */
+  const snapTargets = (clip: Clip) => {
+    const targets = [0]
+    for (const track of latest.current.props.project.tracks) {
       for (const other of track.clips) {
-        if (other.id === clip.id) continue
-        for (const edge of [other.start, clipEnd(other)]) {
-          for (const shift of [edge - start, edge - start - clip.duration]) {
-            if (Math.abs(shift) < distance) {
-              distance = Math.abs(shift)
-              best = start + shift
-            }
-          }
+        const sameGroup = clip.groupId && other.groupId === clip.groupId
+        if (other.id !== clip.id && !sameGroup) {
+          targets.push(other.start, clipEnd(other))
         }
       }
     }
-    if (Math.abs(start) < distance) best = 0
+    return targets
+  }
+
+  const snap = (start: number, clip: Clip) => {
+    let best = start
+    let distance = SNAP_PX / viewRef.current.pxPerSec
+    for (const edge of snapTargets(clip)) {
+      for (const shift of [edge - start, edge - start - clip.duration]) {
+        if (Math.abs(shift) < distance) {
+          distance = Math.abs(shift)
+          best = start + shift
+        }
+      }
+    }
     return Math.max(0, best)
+  }
+
+  const snapTime = (time: number, clip: Clip) => {
+    let best = time
+    let distance = SNAP_PX / viewRef.current.pxPerSec
+    for (const target of snapTargets(clip)) {
+      if (Math.abs(target - time) < distance) {
+        distance = Math.abs(target - time)
+        best = target
+      }
+    }
+    return best
   }
 
   const applyGesture = (point: Point) => {
@@ -318,11 +380,20 @@ export default function Timeline(props: TimelineProps) {
         end: Math.max(g.anchorTime, time),
       })
     } else {
-      const next = {
-        clipId: g.clip.id,
-        trackIndex: trackIndexAt(point.y),
-        start: snap(time - g.grab, g.clip),
-      }
+      const next: Preview =
+        g.kind === 'move'
+          ? {
+              kind: 'move',
+              clipId: g.clip.id,
+              trackIndex: trackIndexAt(point.y),
+              start: snap(time - g.grab, g.clip),
+            }
+          : {
+              kind: 'trim',
+              clipId: g.clip.id,
+              edge: g.edge,
+              time: snapTime(timeAt(point.x), g.clip),
+            }
       previewRef.current = next
       setPreview(next)
     }
@@ -411,6 +482,18 @@ export default function Timeline(props: TimelineProps) {
     }
     const hit = hitTest(point)
     if (!hit) return
+    if (hit.clip && hit.edge) {
+      gesture.current = {
+        kind: 'trim',
+        pointerId: event.pointerId,
+        origin: point,
+        clip: hit.clip,
+        trackIndex: hit.trackIndex,
+        edge: hit.edge,
+        moved: false,
+      }
+      return
+    }
     if (hit.clip && hit.onHeader) {
       event.currentTarget.style.cursor = 'grabbing'
       gesture.current = {
@@ -457,7 +540,13 @@ export default function Timeline(props: TimelineProps) {
     if (point.y < RULER_HEIGHT) cursor = 'pointer'
     else {
       const hit = hitTest(point)
-      if (hit) cursor = hit.clip && hit.onHeader ? 'grab' : 'text'
+      if (hit) {
+        cursor = hit.edge
+          ? 'ew-resize'
+          : hit.clip && hit.onHeader
+            ? 'grab'
+            : 'text'
+      }
     }
     if (canvas.style.cursor !== cursor) canvas.style.cursor = cursor
   }
@@ -524,13 +613,20 @@ export default function Timeline(props: TimelineProps) {
     const point = toLocal(event)
     const time = Math.max(0, timeAt(point.x))
 
-    if (g.kind === 'move') {
-      const moved = previewRef.current
+    if (g.kind === 'move' || g.kind === 'trim') {
+      const done = previewRef.current
       previewRef.current = null
       setPreview(null)
-      const target = moved && current.project.tracks[moved.trackIndex]
-      if (g.moved && moved && target) {
-        current.onMoveClip(moved.clipId, target.id, moved.start)
+      if (g.moved && done?.kind === 'move') {
+        const target = current.project.tracks[done.trackIndex]
+        if (target) current.onMoveClip(done.clipId, target.id, done.start)
+      } else if (g.moved && done?.kind === 'trim') {
+        current.onTrimClip(
+          done.clipId,
+          done.edge,
+          done.time,
+          recordingLength(current.project, current.sources, done.clipId)
+        )
       } else {
         const track = current.project.tracks[g.trackIndex]
         if (track) selectClip(g.clip, track)
@@ -944,6 +1040,20 @@ function Scrollbar({
   )
 }
 
+/** Length of the recording a region plays from (its own length if not loaded). */
+function recordingLength(
+  project: Project,
+  sources: SourceStore,
+  clipId: string
+): number {
+  const found = findClip(project, clipId)
+  if (!found) return 0
+  const { clip } = found
+  return (
+    sources.get(clip.sourceId)?.buffer.duration ?? clip.offset + clip.duration
+  )
+}
+
 // Drawing
 
 function rgba(hex: string, alpha: number) {
@@ -982,12 +1092,21 @@ function drawTimeline(canvas: HTMLCanvasElement, scene: Scene) {
   ctx.clearRect(0, 0, scene.width, scene.height)
   ctx.font = `12px ${scene.font}`
   ctx.textBaseline = 'alphabetic'
-  drawRuler(ctx, scene)
+  const highlightGroups = new Set<string>()
+  for (const track of scene.project.tracks) {
+    for (const clip of track.clips) {
+      if (clip.groupId && isClipSelected(scene, track, clip)) {
+        highlightGroups.add(clip.groupId)
+      }
+    }
+  }
+  const full = { ...scene, highlightGroups }
+  drawRuler(ctx, full)
   scene.project.tracks.forEach((track, index) =>
-    drawLane(ctx, scene, track, index)
+    drawLane(ctx, full, track, index)
   )
   // While a region is dragged, its old selection would only be noise.
-  if (!scene.activeClipId) drawSelection(ctx, scene)
+  if (!scene.activeClipId) drawSelection(ctx, full)
 }
 
 function drawRuler(ctx: CanvasRenderingContext2D, scene: Scene) {
@@ -1065,6 +1184,51 @@ function drawLane(
       ]
     : track.clips
   for (const clip of clips) drawClip(ctx, scene, track, clip, top)
+  drawGuides(ctx, scene, top)
+}
+
+/** Faint -12 dB lines across the track, at the scale of the waveforms. */
+function drawGuides(
+  ctx: CanvasRenderingContext2D,
+  scene: Scene,
+  laneTop: number
+) {
+  const top = laneTop + LANE_PADDING + CLIP_HEADER + 3
+  const bottom = laneTop + scene.laneHeight - LANE_PADDING - 1 - 3
+  const mid = (top + bottom) / 2
+  const offset = (GUIDE_LEVEL * (bottom - top)) / 2
+  ctx.save()
+  ctx.strokeStyle = 'rgba(235, 203, 139, 0.45)'
+  ctx.lineWidth = 1
+  ctx.setLineDash([3, 4])
+  for (const y of [mid - offset, mid + offset]) {
+    ctx.beginPath()
+    ctx.moveTo(0, Math.round(y) + 0.5)
+    ctx.lineTo(scene.width, Math.round(y) + 0.5)
+    ctx.stroke()
+  }
+  ctx.fillStyle = 'rgba(235, 203, 139, 0.85)'
+  ctx.font = `10px ${scene.font}`
+  ctx.fillText('−12 dB', scene.width - 40, Math.round(mid - offset) - 3)
+  ctx.restore()
+}
+
+/** A small closed padlock, marking grouped regions. */
+function drawPadlock(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  color: string
+) {
+  ctx.save()
+  ctx.strokeStyle = color
+  ctx.fillStyle = color
+  ctx.lineWidth = 1.5
+  ctx.beginPath()
+  ctx.arc(x + 4.5, y + 4.5, 2.6, Math.PI, 0)
+  ctx.stroke()
+  ctx.fillRect(x + 1, y + 4.5, 7, 6)
+  ctx.restore()
 }
 
 function drawClip(
@@ -1100,14 +1264,34 @@ function drawClip(
   const name = source ? baseName(source.name) : 'Audio indisponible'
   const gain =
     clip.gain === 0 ? '' : `   ${clip.gain > 0 ? '+' : ''}${clip.gain} dB`
-  ctx.fillStyle = selected ? '#0b1220' : '#f3f4f6'
-  ctx.fillText(`${name}${gain}`, Math.max(x0, 0) + 6, top + 14)
+  const ink = selected ? '#0b1220' : '#f3f4f6'
+  const grouped = clip.groupId && (scene.groupSizes.get(clip.groupId) ?? 0) > 1
+  let textX = Math.max(x0, 0) + 9
+  if (grouped) {
+    drawPadlock(ctx, textX, top + 4, ink)
+    textX += 14
+  }
+  ctx.fillStyle = ink
+  ctx.fillText(`${name}${gain}`, textX, top + 14)
+
+  // Grips at both ends of the top bar: drag them to resize the region.
+  if (x1 - x0 > 28) {
+    ctx.fillStyle = selected
+      ? 'rgba(11, 18, 32, 0.55)'
+      : 'rgba(255, 255, 255, 0.5)'
+    for (const x of [x0 + 3, x0 + 6, x1 - 4, x1 - 7]) {
+      ctx.fillRect(Math.round(x), top + 5, 1, CLIP_HEADER - 10)
+    }
+  }
   ctx.restore()
 
-  ctx.strokeStyle = selected ? '#ffffff' : rgba(color, 0.75)
+  const inGroup = clip.groupId && scene.highlightGroups?.has(clip.groupId)
+  ctx.strokeStyle = selected || inGroup ? '#ffffff' : rgba(color, 0.75)
   ctx.lineWidth = selected ? 2 : 1
+  if (inGroup && !selected) ctx.setLineDash([4, 3])
   roundedRect(ctx, left + 0.5, top + 0.5, right - left - 1, bottom - top - 1, 4)
   ctx.stroke()
+  ctx.setLineDash([])
 }
 
 function drawWaveform(

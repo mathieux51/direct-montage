@@ -2,11 +2,13 @@
 
 import type { ReactNode, RefObject } from 'react'
 import { formatTime } from '@/lib/files'
+import LevelMeter from './LevelMeter'
 import {
   CopyIcon,
   FadeInIcon,
   FadeOutIcon,
   FitIcon,
+  LockIcon,
   PasteIcon,
   PauseIcon,
   PlayIcon,
@@ -16,6 +18,7 @@ import {
   SplitIcon,
   TrashIcon,
   UndoIcon,
+  UnlockIcon,
   ZoomInIcon,
   ZoomOutIcon,
 } from './icons'
@@ -32,6 +35,10 @@ interface ToolbarProps {
   hasRange: boolean
   canPaste: boolean
   hasRegion: boolean
+  /** What the padlock button does for the current selection. */
+  groupAction: 'group' | 'ungroup'
+  canGroup: boolean
+  getLevels: () => number[]
   fadeSeconds: string
   onFadeSecondsChange: (value: string) => void
   onTogglePlay: () => void
@@ -43,6 +50,7 @@ interface ToolbarProps {
   onPaste: () => void
   onDelete: () => void
   onSplit: () => void
+  onGroupToggle: () => void
   onFade: (edge: 'in' | 'out') => void
   onZoomIn: () => void
   onZoomOut: () => void
@@ -101,7 +109,7 @@ export default function Toolbar(props: ToolbarProps) {
 
   return (
     <div className='space-y-3'>
-      <div className='flex flex-wrap items-center justify-between gap-3'>
+      <div className='flex flex-wrap items-center gap-3'>
         <div className='flex flex-wrap items-center gap-3'>
           <Group>
             <ToolButton
@@ -133,6 +141,9 @@ export default function Toolbar(props: ToolbarProps) {
               / {formatTime(props.duration, 2)}
             </span>
           </div>
+        </div>
+        <div className='order-last flex min-w-0 flex-1 basis-full sm:order-none sm:basis-auto'>
+          <LevelMeter getLevels={props.getLevels} playing={props.playing} />
         </div>
         <Group>
           <ToolButton
@@ -221,6 +232,20 @@ export default function Toolbar(props: ToolbarProps) {
             showLabel='always'
           >
             <SplitIcon />
+          </ToolButton>
+          <ToolButton
+            label={props.groupAction === 'ungroup' ? 'Dégrouper' : 'Grouper'}
+            description={
+              props.groupAction === 'ungroup'
+                ? 'Dégrouper les régions sélectionnées'
+                : 'Grouper les régions sélectionnées pour les déplacer ensemble'
+            }
+            shortcut={props.groupAction === 'ungroup' ? 'Ctrl+Maj+G' : 'Ctrl+G'}
+            onClick={props.onGroupToggle}
+            disabled={!props.canGroup}
+            showLabel='always'
+          >
+            {props.groupAction === 'ungroup' ? <UnlockIcon /> : <LockIcon />}
           </ToolButton>
         </Group>
         <Divider />

@@ -19,6 +19,8 @@ export class PlaybackEngine {
   private decoder: OfflineAudioContext | null = null
   private nodes: AudioBufferSourceNode[] = []
   private output: GainNode | null = null
+  private meters: AnalyserNode[] = []
+  private meterSamples = new Float32Array(2048)
   private startTime = 0
   private startPosition = 0
   private token = 0
@@ -60,6 +62,18 @@ export class PlaybackEngine {
 
     const output = context.createGain()
     output.connect(context.destination)
+    // Mono projects are shown on both meter bars.
+    output.channelCount = 2
+    output.channelCountMode = 'explicit'
+    output.channelInterpretation = 'speakers'
+    const splitter = context.createChannelSplitter(2)
+    output.connect(splitter)
+    this.meters = [0, 1].map((channel) => {
+      const analyser = context.createAnalyser()
+      analyser.fftSize = this.meterSamples.length
+      splitter.connect(analyser, channel)
+      return analyser
+    })
     const when = context.currentTime + 0.05
     for (const track of project.tracks) {
       if (track.muted) continue
@@ -93,6 +107,20 @@ export class PlaybackEngine {
     )
   }
 
+  /** Peak level (linear, 1 = full scale) of each output channel right now. */
+  levels(): number[] {
+    if (!this.playing) return []
+    return this.meters.map((analyser) => {
+      analyser.getFloatTimeDomainData(this.meterSamples)
+      let peak = 0
+      for (const value of this.meterSamples) {
+        const level = Math.abs(value)
+        if (level > peak) peak = level
+      }
+      return peak
+    })
+  }
+
   stop() {
     this.token += 1
     for (const node of this.nodes) {
@@ -106,6 +134,8 @@ export class PlaybackEngine {
     this.nodes = []
     this.output?.disconnect()
     this.output = null
+    this.meters.forEach((analyser) => analyser.disconnect())
+    this.meters = []
     this.playing = false
   }
 }
