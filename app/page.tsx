@@ -1,6 +1,7 @@
 'use client'
 
 import Editor from '@/components/Editor'
+import Footer from '@/components/Footer'
 
 export default function Home() {
   return (
@@ -10,6 +11,7 @@ export default function Home() {
           Direct Montage
         </h1>
         <Editor />
+        <Footer />
       </div>
     </div>
   )

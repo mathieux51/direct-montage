@@ -681,7 +681,7 @@ export default function Editor() {
           onChange={(event) =>
             dispatch({ type: 'rename', name: event.target.value })
           }
-          className='min-w-0 flex-1 basis-48 rounded bg-transparent py-1 text-xl font-semibold text-white outline-none transition-all focus:bg-gray-700 focus:px-2'
+          className='min-w-0 flex-1 basis-48 rounded bg-transparent py-1 text-xl font-normal text-white outline-none transition-all focus:bg-gray-700 focus:px-2'
           placeholder='Nom du projet'
           aria-label='Nom du projet'
         />
